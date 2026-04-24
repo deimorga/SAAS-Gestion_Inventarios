@@ -1,0 +1,33 @@
+# === Development Dockerfile ===
+FROM python:3.12-slim
+
+# Evitar escritura de .pyc y forzar stdout sin buffer
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Instalar dependencias de sistema necesarias para compilar paquetes (ej. asyncpg)
+RUN apt-get update \
+    && apt-get install -y gcc libpq-dev curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements (si existe) y pre-instalar
+# Para el scaffolding inicial instalamos dependencias base de FastAPI
+RUN pip install --no-cache-dir \
+    fastapi==0.110.0 \
+    uvicorn[standard]==0.29.0 \
+    sqlalchemy==2.0.29 \
+    asyncpg==0.29.0 \
+    alembic==1.13.1 \
+    pydantic-settings==2.2.1 \
+    celery==5.3.6 \
+    redis==5.0.3
+
+# En desarrollo, montamos el volumen, así que no hace falta COPY del código aquí.
+# Tampoco bajamos permisos a appuser en dev para evitar problemas de permisos de volumen montado en macOS.
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -1,16 +1,16 @@
 # Task List — SaaS Gestión de Inventarios (MicroNuba Inventory)
 
 > **Última actualización:** 2026-04-24 (sesión 2)  
-> **Fase actual:** Fase 1 — Arquitectura completada → Listo para desarrollo  
-> **Próximo paso:** Definir arquitectura técnica y stack final
+> **Fase actual:** Fase 1 Completada → Iniciando Fase 2 (Desarrollo del Core MVP)
+> **Próximo paso:** Implementar Sprint 1: Auth (JWT, login, refresh, logout) y RLS.
 
 ---
 
 ## 🏗️ Fase 0: Gobernanza y Configuración Inicial
 
 - [x] Adaptar documentos de gobernanza al nuevo proyecto (reglas, DoD, estructura, contexto) <!-- id: 0 | RF: N/A -->
-- [ ] Definir stack tecnológico y arquitectura de contenedores <!-- id: 1 | RF: N/A | Bloqueado por: Fase 1 -->
-- [ ] Configurar entorno de desarrollo con Docker (`docker-compose.dev.yml`) <!-- id: 2 | RF: N/A | Bloqueado por: id:1 -->
+- [x] Definir stack tecnológico y arquitectura de contenedores <!-- id: 1 | RF: N/A | Completado: 2026-04-24 -->
+- [x] Configurar entorno de desarrollo con Docker (`docker-compose.dev.yml`) <!-- id: 2 | RF: N/A | Completado: 2026-04-24 -->
 - [ ] Definir identidad visual y sistema de diseño (Tokens de diseño) <!-- id: 3 | RF: N/A | Prioridad: Baja (sin frontend MVP) -->
 
 ---
@@ -32,7 +32,7 @@
 
 - [x] Diseñar modelo de datos Multi-tenant definitivo (ERD con 20 entidades, convenciones, RLS, índices) <!-- id: 5 | RF: Todos | Completado: 2026-04-24 -->
 - [x] Definir arquitectura física e infraestructura (`ARQUITECTURA_FISICA.md`, `ESPECIFICACIONES_INFRAESTRUCTURA.md`, `MODELO_DATOS.md`) <!-- id: 6 | RF: N/A | Completado: 2026-04-24 -->
-- [ ] Crear definiciones técnicas por módulo en `doc/Tecnico/` (endpoints detallados, contratos request/response, validaciones) <!-- id: 6b | RF: Todos -->
+- [x] Crear definiciones técnicas por módulo en `doc/Definicion-Tecnica/` (endpoints detallados, contratos request/response, validaciones) <!-- id: 6b | RF: Todos | Completado: 2026-04-24 -->
 
 ---
 
