@@ -2,7 +2,7 @@
 
 **Fecha Inicio:** 2026-04-24  
 **Fecha Fin:** 2026-04-24 (completado en sesión)  
-**Estado:** ✅ Casi Completado (12/13 tareas)
+**Estado:** ✅ Completado (13/13 tareas)
 
 ---
 
@@ -28,8 +28,8 @@ Completar toda la documentación funcional y arquitectónica necesaria para inic
 | T-009 | Crear Plan de Trabajo MVP | `orquestador_proyecto` | ✅ Completado | Roadmap + riesgos |
 | T-010 | Definir Arquitectura Técnica | `arquitecto_soluciones` | ✅ Completado | `ARQUITECTURA_FISICA.md` — 11 secciones, 4 ADRs, 8 principios |
 | T-011 | ERD Definitivo + Modelo de Datos | `experto_base_datos_postgres` | ✅ Completado | `MODELO_DATOS.md` — 20 entidades, RLS, índices, volúmenes |
-| T-012 | Definiciones Técnicas por módulo | `experto_backend_python` | ⏳ Pendiente | Contratos API request/response |
-| T-013 | Configurar Docker Compose (dev) | `experto_devsecops` | ⏳ Pendiente | Specs definidas en `ESPECIFICACIONES_INFRAESTRUCTURA.md` |
+| T-012 | Definiciones Técnicas por módulo | `experto_backend_python` | ✅ Completado | Contratos API request/response en `Definicion-Tecnica/` |
+| T-013 | Configurar Docker Compose e Infra (dev) | `experto_devsecops` | ✅ Completado | Specs definidas en `ESPECIFICACIONES_INFRAESTRUCTURA.md`, Dockerfile, SQL inicial |
 
 ---
 
@@ -47,11 +47,16 @@ Completar toda la documentación funcional y arquitectónica necesaria para inic
   - `ESPECIFICACIONES_INFRAESTRUCTURA.md` — 6 contenedores (`inv-*`), redes, Dockerfile
   - `MODELO_DATOS.md` — 20 entidades, convenciones, RLS, CPP
 
+- **Definición Técnica:** ✅ **7/7 documentos completados**
+  - Contratos API, diagramas y tablas afectadas (Módulos 01 a 07)
+- **Infraestructura Base:** ✅ **Completado**
+  - `docker-compose.dev.yml`, `Dockerfile.dev`, `main.py`
+  - Scripts SQL de RLS y extensiones en `infra/postgres/init/`
+
 ---
 
-## Próximos Pasos (Sprint 1 Prep)
+## Próximos Pasos (Sprint 1)
 
-1. Crear definiciones técnicas por módulo (`doc/Tecnico/`) — contratos API detallados
-2. Configurar `docker-compose.dev.yml` basado en specs definidas
-3. Scaffolding base de FastAPI con estructura Clean Architecture
-4. Iniciar Sprint 1: Gobierno + Catálogo Base
+1. **Construcción:** Levantar contenedores con `docker-compose.dev.yml up -d --build`.
+2. **Sprint 1 (Backend Core):** Implementar módulo de Gobierno y Seguridad.
+3. **Migraciones:** Inicializar Alembic y crear migración base del schema.
