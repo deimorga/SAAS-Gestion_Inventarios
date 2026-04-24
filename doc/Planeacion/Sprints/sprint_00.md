@@ -1,8 +1,8 @@
 # Sprint 0 — Definición Funcional y Arquitectura
 
 **Fecha Inicio:** 2026-04-24  
-**Fecha Fin:** 2026-04-30 (estimado)  
-**Estado:** En Progreso
+**Fecha Fin:** 2026-04-24 (completado en sesión)  
+**Estado:** ✅ Casi Completado (12/13 tareas)
 
 ---
 
@@ -26,14 +26,14 @@ Completar toda la documentación funcional y arquitectónica necesaria para inic
 | T-007 | Formalizar RF-033..RF-035 (Integración) | `experto_requerimientos_historias` | ✅ Completado | 3 RF, 2 HU, 11 endpoints |
 | T-008 | Crear Product Backlog priorizado | `orquestador_proyecto` | ✅ Completado | 35 items, 5 sprints |
 | T-009 | Crear Plan de Trabajo MVP | `orquestador_proyecto` | ✅ Completado | Roadmap + riesgos |
-| T-010 | Definir Arquitectura Técnica | `arquitecto_soluciones` | ⏳ Pendiente | `ARQUITECTURA_FISICA.md` |
-| T-011 | ERD Definitivo + Migraciones Base | `experto_base_datos_postgres` | ⏳ Pendiente | Modelo detallado |
-| T-012 | Definiciones Técnicas por módulo | `experto_backend_python` | ⏳ Pendiente | Contratos API |
-| T-013 | Configurar Docker Compose (dev) | `experto_devsecops` | ⏳ Pendiente | `docker-compose.dev.yml` |
+| T-010 | Definir Arquitectura Técnica | `arquitecto_soluciones` | ✅ Completado | `ARQUITECTURA_FISICA.md` — 11 secciones, 4 ADRs, 8 principios |
+| T-011 | ERD Definitivo + Modelo de Datos | `experto_base_datos_postgres` | ✅ Completado | `MODELO_DATOS.md` — 20 entidades, RLS, índices, volúmenes |
+| T-012 | Definiciones Técnicas por módulo | `experto_backend_python` | ⏳ Pendiente | Contratos API request/response |
+| T-013 | Configurar Docker Compose (dev) | `experto_devsecops` | ⏳ Pendiente | Specs definidas en `ESPECIFICACIONES_INFRAESTRUCTURA.md` |
 
 ---
 
-## Resultado Parcial
+## Resultado
 
 - **Definición Funcional:** ✅ **8/8 documentos completados**
   - 35 Requerimientos Funcionales formalizados
@@ -42,13 +42,16 @@ Completar toda la documentación funcional y arquitectónica necesaria para inic
   - 7 ERDs por módulo
 - **Planeación:** ✅ **3/3 artefactos creados**
   - Product Backlog, Plan de Trabajo, Sprint 0
-- **Arquitectura:** ⏳ **0/3 pendiente**
+- **Arquitectura:** ✅ **3/3 documentos completados**
+  - `ARQUITECTURA_FISICA.md` — Stack, capas, seguridad, ADRs
+  - `ESPECIFICACIONES_INFRAESTRUCTURA.md` — 6 contenedores (`inv-*`), redes, Dockerfile
+  - `MODELO_DATOS.md` — 20 entidades, convenciones, RLS, CPP
 
 ---
 
-## Próximos Pasos (en orden)
+## Próximos Pasos (Sprint 1 Prep)
 
-1. Definir `ARQUITECTURA_FISICA.md` y `ESPECIFICACIONES_INFRAESTRUCTURA.md`
-2. Crear ERD definitivo con modelo de datos completo
-3. Generar definiciones técnicas por módulo en `doc/Tecnico/`
-4. Configurar `docker-compose.dev.yml` y scaffolding base de FastAPI
+1. Crear definiciones técnicas por módulo (`doc/Tecnico/`) — contratos API detallados
+2. Configurar `docker-compose.dev.yml` basado en specs definidas
+3. Scaffolding base de FastAPI con estructura Clean Architecture
+4. Iniciar Sprint 1: Gobierno + Catálogo Base

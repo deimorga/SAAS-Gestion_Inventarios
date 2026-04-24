@@ -1,7 +1,7 @@
 # Task List — SaaS Gestión de Inventarios (MicroNuba Inventory)
 
-> **Última actualización:** 2026-04-24  
-> **Fase actual:** Fase 1 — Definición Funcional y Arquitectura  
+> **Última actualización:** 2026-04-24 (sesión 2)  
+> **Fase actual:** Fase 1 — Arquitectura completada → Listo para desarrollo  
 > **Próximo paso:** Definir arquitectura técnica y stack final
 
 ---
@@ -28,10 +28,10 @@
 - [x] Formalizar RF-029 a RF-032: Módulo 06 — Reportes y Valoración (kardex, snapshots, alertas reorden, valoración contable) <!-- id: 4f | RF: RF-029..RF-032 | HU: 2 | Endpoints: 6 | Completado: 2026-04-24 -->
 - [x] Formalizar RF-033 a RF-035: Módulo 07 — Integración y Masivas (webhooks, bulk engine, inventario cíclico) <!-- id: 4g | RF: RF-033..RF-035 | HU: 2 | Endpoints: 11 | Completado: 2026-04-24 -->
 
-### Arquitectura y Especificaciones Técnicas ⏳ PENDIENTE
+### Arquitectura y Especificaciones Técnicas ✅ COMPLETADA
 
-- [ ] Diseñar modelo de datos Multi-tenant definitivo (ERD detallado + migraciones Alembic base) <!-- id: 5 | RF: Todos | Depende de: Fase 1 Funcional -->
-- [ ] Definir arquitectura física e infraestructura (`ARQUITECTURA_FISICA.md`, `ESPECIFICACIONES_INFRAESTRUCTURA.md`) <!-- id: 6 | RF: N/A -->
+- [x] Diseñar modelo de datos Multi-tenant definitivo (ERD con 20 entidades, convenciones, RLS, índices) <!-- id: 5 | RF: Todos | Completado: 2026-04-24 -->
+- [x] Definir arquitectura física e infraestructura (`ARQUITECTURA_FISICA.md`, `ESPECIFICACIONES_INFRAESTRUCTURA.md`, `MODELO_DATOS.md`) <!-- id: 6 | RF: N/A | Completado: 2026-04-24 -->
 - [ ] Crear definiciones técnicas por módulo en `doc/Tecnico/` (endpoints detallados, contratos request/response, validaciones) <!-- id: 6b | RF: Todos -->
 
 ---
