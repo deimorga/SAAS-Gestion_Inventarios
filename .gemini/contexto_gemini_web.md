@@ -1,27 +1,37 @@
 # Contexto de Sesión — SaaS Gestión de Inventarios (MicroNuba Inventory)
 
-> Última actualización: 2026-04-23T23:47:00-05:00
+> Última actualización: 2026-04-24T10:54:00-05:00
 
-## Resumen Sesión Actual (Inicialización del Proyecto)
+## Resumen Sesión Actual (Definición Funcional Completa)
 
-Se inicializó el proyecto **SaaS Gestión de Inventarios** (MicroNuba Inventory) tomando como base el esqueleto del proyecto anterior (Gestión Talleres). Se actualizaron todos los documentos de gobernanza para reflejar el nuevo dominio de negocio: **gestión de inventarios multi-tenant con motor transaccional atómico**.
+Se completó la **definición funcional completa** del proyecto MicroNuba Inventory SaaS. Los 3 documentos de idea se analizaron, sincronizaron y formalizaron en **35 Requerimientos Funcionales**, **18 Historias de Usuario** y **69 Endpoints** distribuidos en 7 módulos funcionales + 1 documento paraguas.
 
-### Artefactos creados/modificados:
+También se creó toda la **planeación ágil**: Product Backlog priorizado, Plan de Trabajo con roadmap y Sprint 0.
 
-| Artefacto | Acción | Descripción |
-|-----------|--------|-------------|
-| `.gemini/task.md` | Reescrito | Nuevo roadmap de 5 fases para inventarios |
-| `.gemini/contexto_gemini_web.md` | Reescrito | Contexto adaptado al dominio de inventarios |
-| `.agent/RULES.md` | Reescrito | Reglas operativas adaptadas a inventarios |
-| `.agent/rules/reglas.md` | Reescrito | Modelo operativo del inventario (8 capacidades) |
-| `.agent/rules/restore_context.md` | Reescrito | Referencias actualizadas al nuevo proyecto |
-| `.agent/rules/definition_of_done.md` | Reescrito | DoD adaptada a inventarios |
-| `.agent/rules/MANUAL_DE_USO.md` | Reescrito | Manual de operación actualizado |
-| `doc/Estructura/estructura_proyecto.md` | Reescrito | Estructura del monorepo adaptada |
+### Artefactos creados en esta sesión:
+
+| Artefacto | Tipo | Contenido |
+|-----------|------|-----------|
+| `doc/Funcional/mejorado/00_definicion-solucion_saas/DEFINICION_SAAS.md` | Paraguas | Visión, modelo multi-tenant, capacidades, ERD, glosario, priorización |
+| `doc/Funcional/mejorado/01_gobierno_seguridad/RF_gobierno_seguridad.md` | RF | RF-001..RF-005 (5 RF, 4 HU, 9 endpoints) |
+| `doc/Funcional/mejorado/02_catalogo_productos/RF_catalogo_productos.md` | RF | RF-006..RF-012 (7 RF, 3 HU, 16 endpoints) |
+| `doc/Funcional/mejorado/03_sedes_almacenes/RF_sedes_almacenes.md` | RF | RF-013..RF-015 (3 RF, 3 HU, 10 endpoints) |
+| `doc/Funcional/mejorado/04_motor_transaccional/RF_motor_transaccional.md` | RF | RF-016..RF-024 (9 RF, 3 HU, 10 endpoints) |
+| `doc/Funcional/mejorado/05_reservas_demanda/RF_reservas_demanda.md` | RF | RF-025..RF-028 (4 RF, 1 HU, 7 endpoints) |
+| `doc/Funcional/mejorado/06_reportes_valoracion/RF_reportes_valoracion.md` | RF | RF-029..RF-032 (4 RF, 2 HU, 6 endpoints) |
+| `doc/Funcional/mejorado/07_integracion_masivas/RF_integracion_masivas.md` | RF | RF-033..RF-035 (3 RF, 2 HU, 11 endpoints) |
+| `doc/Planeacion/Backlog/product_backlog.md` | Planeación | 35 items priorizados P0/P1/P2 con estimación y dependencias |
+| `doc/Planeacion/Planes_Trabajo/plan_trabajo_mvp.md` | Planeación | Roadmap Gantt, 5 sprints, riesgos, criterios de éxito |
+| `doc/Planeacion/Sprints/sprint_00.md` | Sprint | Sprint actual con 10/13 tareas completadas |
+| `.gemini/task.md` | Tracking | 9 completadas, 49 pendientes organizadas por sprint |
 
 ## Estado del Proyecto
 
-El proyecto **SaaS Gestión de Inventarios** se encuentra en fase de **inicialización**. Se adaptó la gobernanza desde un esqueleto preexistente. No se ha iniciado la implementación de código.
+- **Fase:** 1 — Definición Funcional (**Completada**) → Arquitectura (**Pendiente**)
+- **Definición Funcional:** ✅ 35 RF, 18 HU, 69 endpoints, 7 módulos
+- **Arquitectura:** ⏳ Pendiente (ARQUITECTURA_FISICA.md, ESPECIFICACIONES_INFRAESTRUCTURA.md)
+- **Código:** Sin iniciar (core_backend/ y web_frontend/ vacíos)
+- **Infraestructura:** Sin configurar (docker-compose.dev.yml pendiente)
 
 ## Estructura del Repositorio
 
@@ -29,57 +39,47 @@ El proyecto **SaaS Gestión de Inventarios** se encuentra en fase de **inicializ
 SAAS-Gestion_Inventarios/
 ├── .agent/              ← Configuración del agente (skills, workflows, reglas)
 ├── .gemini/             ← Task lists y memoria de sesión del agente
-├── doc/                 ← Documentación del proyecto (SSoT)
-│   ├── Arquitectura/    ← Diseño de arquitectura física e infraestructura (PENDIENTE)
-│   ├── Documentacion de Idea/ ← Google Docs originales de la idea
-│   ├── Estructura/      ← Mapa oficial de directorios (este archivo)
-│   ├── Funcional/       ← Requerimientos funcionales e HU (POR DEFINIR)
-│   ├── Planeacion/      ← Gestión Ágil y Planeación
-│   └── Tecnico/         ← Definiciones técnicas de diseño
+├── doc/
+│   ├── Arquitectura/    ← Diseño de arquitectura (PENDIENTE)
+│   ├── Documentacion de Idea/ ← 3 Google Docs originales
+│   ├── Estructura/      ← Mapa oficial de directorios
+│   ├── Funcional/mejorado/ ← ✅ 8 documentos RF/HU (COMPLETADO)
+│   ├── Planeacion/      ← ✅ Backlog + Plan + Sprint 0 (COMPLETADO)
+│   └── Tecnico/         ← Definiciones técnicas (PENDIENTE)
 ├── core_backend/        ← Backend FastAPI (VACÍO)
 ├── web_frontend/        ← Frontend Angular PWA (VACÍO)
-└── infra/               ← Docker Compose, Traefik, Postgres, MinIO (POR CONFIGURAR)
+└── infra/               ← Docker, Traefik, Postgres (POR CONFIGURAR)
 ```
 
-## Dominio de Negocio: Inventarios Multi-Tenant
+## Módulos Funcionales Definidos
 
-**MicroNuba Inventory SaaS Core** es una plataforma de gestión de inventarios enfocada en:
-
-| Capacidad | Descripción |
-|-----------|-------------|
-| Motor Transaccional Atómico | Operaciones ACID: entradas, salidas, transferencias entre sedes |
-| Costo Promedio Ponderado (CPP) | Recálculo automático del costo unitario ante cada entrada |
-| Kardex Histórico | Registro inmutable y auditable de todos los movimientos |
-| Multi-Sede | Jerarquía de almacenes, bodegas y tiendas |
-| Reorder Point | Alertas de reposición automática |
-| Soft Reservation | Reservas temporales para e-commerce |
-| Bulk Engine | Procesamiento masivo de movimientos |
-| Balance Snapshots | Estados de inventario point-in-time |
+| Módulo | RF | Prioridad | Estado |
+|--------|-----|-----------|--------|
+| 01 — Gobierno y Seguridad | RF-001..RF-005 | P0 | ✅ Definido |
+| 02 — Catálogo de Productos | RF-006..RF-012 | P0 | ✅ Definido |
+| 03 — Sedes y Almacenes | RF-013..RF-015 | P0 | ✅ Definido |
+| 04 — Motor Transaccional | RF-016..RF-024 | P0 | ✅ Definido |
+| 05 — Reservas y Demanda | RF-025..RF-028 | P1 | ✅ Definido |
+| 06 — Reportes y Valoración | RF-029..RF-032 | P1 | ✅ Definido |
+| 07 — Integración y Masivas | RF-033..RF-035 | P2 | ✅ Definido |
 
 ## Pendientes / Próximos Pasos
 
-- [ ] Definir stack tecnológico y arquitectura de contenedores (confirmar Angular + FastAPI + Postgres + Traefik)
-- [ ] Formalizar los 3 Google Docs de la idea en Requerimientos Funcionales (RF) e Historias de Usuario (HU)
-- [ ] Diseñar modelo de datos Multi-tenant (ERD en Mermaid)
-- [ ] Crear DEFINICION_SAAS.md para el modelo de inventarios
-- [ ] Configurar entorno de desarrollo con Docker
-- [ ] Definir identidad visual y sistema de diseño
-
-## Documentación de Idea (Fuente Original)
-
-Los documentos originales de la idea están en Google Docs vinculados en `doc/Documentacion de Idea/`:
-1. **Alcance Funcional:** Gestión de Inventarios SaaS
-2. **Arquitectura de Referencia:** MicroNuba Inventory SaaS Core
-3. **Especificación Técnica Enterprise:** Motor de Inventarios Atómico (MicroNuba)
+1. Definir `ARQUITECTURA_FISICA.md` y `ESPECIFICACIONES_INFRAESTRUCTURA.md`
+2. Crear ERD definitivo con migraciones Alembic base
+3. Definiciones técnicas por módulo en `doc/Tecnico/`
+4. Configurar `docker-compose.dev.yml` (FastAPI + PostgreSQL + Redis + Traefik)
+5. Scaffolding base del backend FastAPI
 
 ## Notas de Gobernanza
 
-- **Commits:** El usuario requiere aprobación explícita antes de cualquier `git commit` o `git push`.
-- **Calidad:** Todo desarrollo futuro debe pasar por la skill `verificador_calidad` y obtener veredicto `APROBADO`.
-- **Skills activas:** `orquestador_proyecto`, `experto_backend_python`, `experto_frontend_angular`, `experto_base_datos_postgres`, `verificador_calidad`
+- **Commits:** El usuario requiere aprobación explícita antes de `git commit` o `git push`.
+- **Calidad:** Todo desarrollo debe pasar por `verificador_calidad` con veredicto `APROBADO`.
+- **Enfoque MVP:** API-First (sin frontend en esta etapa). Las HU se escriben desde la perspectiva de consumidores de API.
 
 ## Notas Técnicas
 
 - **Repositorio:** `https://github.com/deimorga/SAAS-Gestion_Inventarios.git`
 - **Branch principal:** `main`
+- **Stack propuesto:** FastAPI + SQLAlchemy + Alembic + PostgreSQL (RLS) + Redis + Celery + Traefik
 - **Archivo maestro de estructura:** `doc/Estructura/estructura_proyecto.md`
