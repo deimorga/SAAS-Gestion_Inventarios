@@ -1,0 +1,19 @@
+flowchart TD
+    %% Estilos Globales
+    classDef main fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef warning fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef success fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+    classDef critico fill:#ffcdd2,stroke:#c62828,stroke-width:2px;
+
+    Inicio([Inicio del Proceso]) :::main
+    Inicio --> Validacion{¿Datos Válidos?}
+    
+    Validacion -- No --> Error[Notificar Error]:::critico
+    Validacion -- Sí --> Proceso[Ejecutar Lógica Core]:::main
+    
+    Proceso --> Guardado{Intentar Guardar}
+    Guardado -- Éxito --> Fin([Fin con Éxito]):::success
+    Guardado -- Fallo --> Retry[Reintentar Colas]:::warning
+    
+    Retry --> Proceso
+    Error --> Fin

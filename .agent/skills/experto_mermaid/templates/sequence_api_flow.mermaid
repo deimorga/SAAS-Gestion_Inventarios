@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    
+    participant Client as Cliente (Web/Mobile)
+    participant API as API Gateway / Nginx
+    participant App as Laravel SaaS Core
+    participant DB as PostgreSQL (SaaS)
+    participant Redis as Cache / Queues
+    
+    Client->>API: Solicitud (Bearer Token)
+    API->>App: Forward Request
+    
+    activate App
+    App->>App: IdentifyTenant (Middleware)
+    
+    App->>Redis: Check Cache (Rate Limiting)
+    Redis-->>App: OK
+    
+    App->>DB: Query Data (Tenant Isolated)
+    activate DB
+    DB-->>App: Dataset
+    deactivate DB
+    
+    App->>App: Transform Resource
+    App-->>Client: JSON Response (200 OK)
+    deactivate App

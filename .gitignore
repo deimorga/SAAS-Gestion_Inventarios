@@ -1,0 +1,37 @@
+# === Entornos y Secretos ===
+.env
+.env.*
+!.env.example
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# === Node / Angular ===
+node_modules/
+dist/
+.angular/
+.cache/
+*.tsbuildinfo
+
+# === Sistema ===
+.DS_Store
+Thumbs.db
+*.gdoc
+
+# === IDEs ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

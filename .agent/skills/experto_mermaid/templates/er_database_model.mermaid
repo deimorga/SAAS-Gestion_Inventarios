@@ -1,0 +1,25 @@
+erDiagram
+    TENANTS ||--o{ SCHOOLS : owns
+    SCHOOLS ||--o{ USERS : legacy_id
+    USERS ||--o{ ROLES : assigned
+    
+    TENANTS {
+        bigint id PK
+        string name
+        string domain UNIQUE
+        string db_connection
+    }
+    
+    SCHOOLS {
+        bigint id PK
+        bigint tenant_id FK
+        string name
+        string address
+    }
+    
+    USERS {
+        bigint id PK
+        string email UNIQUE
+        string password
+        timestamp last_login
+    }
