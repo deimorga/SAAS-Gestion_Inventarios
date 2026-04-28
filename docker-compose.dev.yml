@@ -103,7 +103,7 @@ services:
     image: postgres:15-alpine
     container_name: inv-postgres
     ports:
-      - "5432:5432" # Expuesto solo para dev
+      - "5433:5432" # Expuesto solo para dev (5433 evita colisión con otros proyectos)
     networks:
       - inv_data
     environment:
@@ -124,7 +124,7 @@ services:
     image: redis:7-alpine
     container_name: inv-redis
     ports:
-      - "6379:6379" # Expuesto solo para dev
+      - "6380:6379" # Expuesto solo para dev (6380 evita colisión con otros proyectos)
     networks:
       - inv_app
       - inv_data

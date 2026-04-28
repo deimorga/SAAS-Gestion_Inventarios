@@ -1,0 +1,26 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+no_strict_optional = true
+# Pydantic v2 coerces str→UUID at runtime; suppress these known false positives
+disable_error_code = ["arg-type"]
