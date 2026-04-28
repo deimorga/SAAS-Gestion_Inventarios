@@ -9,7 +9,19 @@ from app.services.tenant import get_tenant_config, update_tenant_config
 router = APIRouter(prefix="/tenant", tags=["Tenant"])
 
 
-@router.get("/config", response_model=TenantConfigResponse)
+@router.get(
+    "/config",
+    response_model=TenantConfigResponse,
+    summary="Obtener configuración del tenant",
+    description=(
+        "Retorna la configuración operativa del tenant: tier de suscripción, políticas JSONB "
+        "(límites de rate, TTL de reservas, etc.). Solo accesible para `tenant_admin` o `super_admin`."
+    ),
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Solo tenant_admin o super_admin"},
+    },
+)
 async def get_config(
     auth: AuthContext = Depends(require_admin),
     db: AsyncSession = Depends(get_auth_db),
@@ -17,7 +29,20 @@ async def get_config(
     return await get_tenant_config(auth.tenant_id, db)
 
 
-@router.patch("/config", response_model=TenantConfigResponse)
+@router.patch(
+    "/config",
+    response_model=TenantConfigResponse,
+    summary="Actualizar configuración del tenant",
+    description=(
+        "Actualiza parcialmente las políticas JSONB del tenant (merge, no reemplazo). "
+        "Todos los cambios quedan registrados en el audit trail."
+    ),
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Solo tenant_admin o super_admin"},
+        422: {"description": "Datos de entrada inválidos"},
+    },
+)
 async def patch_config(
     body: TenantConfigUpdate,
     request: Request,

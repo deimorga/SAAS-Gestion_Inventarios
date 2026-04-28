@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, api_keys, tenant, audit_logs, products, categories, warehouses
+from app.api.v1.endpoints import auth, api_keys, tenant, audit_logs, products, categories, warehouses, reports, reservations
 from app.api.v1.endpoints.inventory import ledger_router, stock_router, transactions_router
 
 router = APIRouter(prefix="/v1")
@@ -15,3 +15,5 @@ router.include_router(warehouses.router)
 router.include_router(transactions_router)
 router.include_router(stock_router)
 router.include_router(ledger_router)
+router.include_router(reports.router)
+router.include_router(reservations.router)

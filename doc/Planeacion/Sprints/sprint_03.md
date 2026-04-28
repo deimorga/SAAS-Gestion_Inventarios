@@ -1,8 +1,8 @@
 # Sprint 3 — Reportes, Reservas y Documentación API
 
-**Fecha Inicio:** 2026-04-29
-**Fecha Fin Estimada:** 2026-05-12
-**Estado:** ⏳ Pendiente
+**Fecha Inicio:** 2026-04-28
+**Fecha Fin Real:** 2026-04-28
+**Estado:** ✅ Completado
 
 ---
 
@@ -16,14 +16,14 @@ Implementar el módulo de reportes operativos (Kardex, Valoración Contable, Ale
 
 | ID | Requerimiento | Tarea | Estado | Notas |
 |---|---|---|---|---|
-| T-301 | RF-029 | Kardex Histórico (`GET /v1/reports/kardex`) | ⏳ Pendiente | Movimientos paginados con balance running |
-| T-302 | RF-032 | Valoración Contable (`GET /v1/reports/valuation`) | ⏳ Pendiente | SUM(qty × cpp) por producto; total consolidado |
-| T-303 | RF-030 | Balance Snapshots (`POST/GET /v1/reports/valuation/snapshots`) | ⏳ Pendiente | FastAPI BackgroundTask; tabla `valuation_snapshots`; 202 Accepted |
-| T-304 | RF-031 | Alertas Stock Bajo (`GET /v1/reports/low-stock`) | ⏳ Pendiente | `available_qty ≤ reorder_point`; campo ya existe en `products` |
-| T-305 | RF-025 | Soft Reservations + TTL (`POST/GET /v1/reservations`) | ⏳ Pendiente | OCC en `stock_balances`; nuevas tablas `reservations` + `reservation_items` |
-| T-306 | RF-026 | Hard Commitment (`POST /v1/reservations/{id}/confirm`) | ⏳ Pendiente | Convierte reserva en Issue; libera `reserved_qty` sobrante si qty < reservada |
-| T-307 | RF-027 | Auto-Expiration (`POST /v1/reservations/{id}/cancel` + background) | ⏳ Pendiente | Startup task periódica; devuelve `available_qty`; status → `EXPIRED` |
-| T-308 | DOC-001 | Documentación API OpenAPI | ⏳ Pendiente | Ver sección Documentación API más abajo |
+| T-301 | RF-029 | Kardex Histórico (`GET /v1/reports/kardex`) | ✅ Completado | Movimientos paginados con balance running |
+| T-302 | RF-032 | Valoración Contable (`GET /v1/reports/valuation`) | ✅ Completado | SUM(qty × cpp) por producto; total consolidado |
+| T-303 | RF-030 | Balance Snapshots (`POST/GET /v1/reports/valuation/snapshots`) | ✅ Completado | FastAPI BackgroundTask; tabla `valuation_snapshots`; 202 Accepted |
+| T-304 | RF-031 | Alertas Stock Bajo (`GET /v1/reports/low-stock`) | ✅ Completado | `available_qty ≤ reorder_point`; campo ya existe en `products` |
+| T-305 | RF-025 | Soft Reservations + TTL (`POST/GET /v1/reservations`) | ✅ Completado | OCC en `stock_balances`; nuevas tablas `reservations` + `reservation_items` |
+| T-306 | RF-026 | Hard Commitment (`POST /v1/reservations/{id}/confirm`) | ✅ Completado | Convierte reserva en Issue; libera `reserved_qty` sobrante si qty < reservada |
+| T-307 | RF-027 | Auto-Expiration (`POST /v1/reservations/{id}/cancel` + background) | ✅ Completado | Startup task periódica; devuelve `available_qty`; status → `EXPIRED` |
+| T-308 | DOC-001 | Documentación API OpenAPI | ✅ Completado | Ver sección Documentación API más abajo |
 
 ---
 
@@ -286,16 +286,32 @@ app = FastAPI(
 
 | Criterio | Umbral | Estado |
 |----------|--------|--------|
-| Cobertura global ≥80% | ≥80% | ⏳ |
-| 0 errores `ruff` | `All checks passed!` | ⏳ |
-| 0 errores `mypy` | `Success: no issues found` | ⏳ |
-| RLS validado en tablas nuevas | `reservations`, `reservation_items`, `valuation_snapshots` | ⏳ |
-| OCC aplicado en reservas | Máx 3 reintentos; 409 si se agota | ⏳ |
-| Snapshot genera en background | 202 Accepted; procesa sin bloquear | ⏳ |
-| Auto-expiry devuelve stock | `available_qty` correcto tras expiración | ⏳ |
-| **Todos los endpoints S1+S2 documentados** | `summary` + `description` + `responses` + examples en schemas | ⏳ |
-| **Todos los endpoints S3 documentados al implementarse** | Convención DOC-001 aplicada desde la primera línea de código | ⏳ |
-| OpenAPI exportado sin errores | `scripts/export_openapi.py` ejecutable | ⏳ |
-| `/docs` deshabilitado en prod | `ENABLE_SWAGGER=false` → 404 en `/docs` | ⏳ |
+| Cobertura global ≥80% | ≥80% | ✅ 92% |
+| 0 errores `ruff` | `All checks passed!` | ✅ |
+| 0 errores `mypy` | `Success: no issues found` | ✅ 64 archivos |
+| RLS validado en tablas nuevas | `reservations`, `reservation_items`, `valuation_snapshots` | ✅ |
+| OCC aplicado en reservas | Máx 3 reintentos; 409 si se agota | ✅ |
+| Snapshot genera en background | 202 Accepted; procesa sin bloquear | ✅ |
+| Auto-expiry devuelve stock | `available_qty` correcto tras expiración | ✅ |
+| **Todos los endpoints S1+S2 documentados** | `summary` + `description` + `responses` + examples en schemas | ✅ |
+| **Todos los endpoints S3 documentados al implementarse** | Convención DOC-001 aplicada desde la primera línea de código | ✅ |
+| OpenAPI exportado sin errores | `scripts/export_openapi.py` ejecutable | ✅ |
+| `/docs` deshabilitado en prod | `ENABLE_SWAGGER=false` → 404 en `/docs` | ✅ |
+
+## 📊 Métricas Finales
+
+| Métrica | Sprint 1 | Sprint 2 | Sprint 3 |
+|---------|----------|----------|----------|
+| Tests totales | 48 | 84 | **111** |
+| Cobertura | 90% | 93% | **92%** |
+| Ruff errors | 0 | 0 | **0** |
+| Mypy errors | 0 | 0 | **0** |
+| Endpoints totales | ~17 | ~27 | **~37** |
+| Migraciones | 002 | 003 | **004 + 005** |
+
+### Notas técnicas
+- `inventory_ledger.transaction_id` hecho nullable (migración 005) para soportar entradas de confirmación de reserva sin requerir un registro en `transactions`.
+- Patrón UUID fix establecido: asyncpg retorna objetos UUID de Python en consultas `text()`; siempre envolver con `str()` en servicios.
+- Background expiry loop: `asyncio.create_task` en lifespan, revisa reservas expiradas cada 60 segundos.
 
 > **Regla a partir de Sprint 3:** Ningún endpoint nuevo se considera terminado sin su documentación OpenAPI (summary, description, responses, examples en el schema). Esto aplica a todos los sprints futuros.

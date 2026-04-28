@@ -19,10 +19,19 @@ from app.services.warehouse import (
 router = APIRouter(prefix="/warehouses", tags=["Warehouses"])
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get(
+    "",
+    response_model=PaginatedResponse,
+    summary="Listar almacenes",
+    description="Retorna los almacenes del tenant. Filtrable por estado activo y tipo (físico / virtual).",
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def get_warehouses(
-    is_active: bool = Query(True),
-    is_virtual: bool | None = Query(None),
+    is_active: bool = Query(True, description="Incluir solo almacenes activos"),
+    is_virtual: bool | None = Query(None, description="Filtrar por tipo: true=virtual, false=físico"),
     auth: AuthContext = Depends(require_inventory_read),
     db: AsyncSession = Depends(get_auth_db),
 ):
@@ -33,7 +42,22 @@ async def get_warehouses(
     )
 
 
-@router.post("", response_model=WarehouseResponse, status_code=201)
+@router.post(
+    "",
+    response_model=WarehouseResponse,
+    status_code=201,
+    summary="Crear almacén",
+    description=(
+        "Crea un nuevo almacén. Si `is_virtual=false`, se auto-crean tres zonas por defecto: "
+        "`RECEIVING`, `DISPATCH` y `QUARANTINE`. Los almacenes virtuales no tienen zonas automáticas."
+    ),
+    responses={
+        201: {"description": "Almacén creado con sus zonas automáticas"},
+        409: {"description": "Código de almacén duplicado en el tenant"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def add_warehouse(
     body: WarehouseCreate,
     request: Request,
@@ -50,7 +74,16 @@ async def add_warehouse(
     return wh
 
 
-@router.get("/{warehouse_id}", response_model=WarehouseResponse)
+@router.get(
+    "/{warehouse_id}",
+    response_model=WarehouseResponse,
+    summary="Obtener almacén por ID",
+    description="Retorna el detalle del almacén incluyendo sus zonas.",
+    responses={
+        404: {"description": "Almacén no encontrado"},
+        401: {"description": "No autenticado"},
+    },
+)
 async def get_warehouse_detail(
     warehouse_id: str,
     auth: AuthContext = Depends(require_inventory_read),
@@ -59,7 +92,21 @@ async def get_warehouse_detail(
     return await get_warehouse(warehouse_id, db, auth.tenant_id)
 
 
-@router.patch("/{warehouse_id}", response_model=WarehouseResponse)
+@router.patch(
+    "/{warehouse_id}",
+    response_model=WarehouseResponse,
+    summary="Actualizar almacén",
+    description=(
+        "Actualiza parcialmente el almacén. "
+        "**RN-013-2:** No se puede desactivar (`is_active=false`) si tiene stock mayor a cero."
+    ),
+    responses={
+        409: {"description": "No se puede desactivar: almacén con stock activo"},
+        404: {"description": "Almacén no encontrado"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def patch_warehouse(
     warehouse_id: str,
     body: WarehouseUpdate,
@@ -79,7 +126,16 @@ async def patch_warehouse(
     return updated
 
 
-@router.get("/{warehouse_id}/zones", response_model=list[ZoneResponse])
+@router.get(
+    "/{warehouse_id}/zones",
+    response_model=list[ZoneResponse],
+    summary="Listar zonas del almacén",
+    description="Retorna todas las zonas del almacén (incluyendo las auto-creadas RECEIVING/DISPATCH/QUARANTINE).",
+    responses={
+        404: {"description": "Almacén no encontrado"},
+        401: {"description": "No autenticado"},
+    },
+)
 async def get_zones(
     warehouse_id: str,
     auth: AuthContext = Depends(require_inventory_read),
@@ -88,7 +144,22 @@ async def get_zones(
     return await list_zones(warehouse_id, db, auth.tenant_id)
 
 
-@router.post("/{warehouse_id}/zones", response_model=ZoneResponse, status_code=201)
+@router.post(
+    "/{warehouse_id}/zones",
+    response_model=ZoneResponse,
+    status_code=201,
+    summary="Crear zona en almacén",
+    description=(
+        "Crea una zona adicional en el almacén. Si se envía `parent_zone_id`, "
+        "la zona queda anidada y hereda el path del padre."
+    ),
+    responses={
+        201: {"description": "Zona creada"},
+        404: {"description": "Almacén o zona padre no encontrada"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def add_zone(
     warehouse_id: str,
     body: ZoneCreate,
@@ -106,7 +177,16 @@ async def add_zone(
     return zone
 
 
-@router.get("/zones/{zone_id}", response_model=ZoneResponse)
+@router.get(
+    "/zones/{zone_id}",
+    response_model=ZoneResponse,
+    summary="Obtener zona por ID",
+    description="Retorna el detalle de una zona específica.",
+    responses={
+        404: {"description": "Zona no encontrada"},
+        401: {"description": "No autenticado"},
+    },
+)
 async def get_zone_detail(
     zone_id: str,
     auth: AuthContext = Depends(require_inventory_read),
@@ -115,7 +195,17 @@ async def get_zone_detail(
     return await get_zone(zone_id, db, auth.tenant_id)
 
 
-@router.patch("/zones/{zone_id}", response_model=ZoneResponse)
+@router.patch(
+    "/zones/{zone_id}",
+    response_model=ZoneResponse,
+    summary="Actualizar zona",
+    description="Actualiza el nombre, tipo o estado activo de la zona.",
+    responses={
+        404: {"description": "Zona no encontrada"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def patch_zone(
     zone_id: str,
     body: ZoneUpdate,

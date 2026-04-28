@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -13,21 +14,83 @@ from app.core.exceptions import http_exception_handler, validation_exception_han
 from app.core.redis_client import close_redis, get_redis
 
 
+async def _expire_reservations_loop() -> None:
+    """Tarea de fondo: expira reservas vencidas cada 60 segundos."""
+    from sqlalchemy import text
+    from app.core.database import AsyncSessionLocal
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT id, tenant_id FROM reservations "
+                        "WHERE status = 'ACTIVE' AND expires_at <= now()"
+                    )
+                )
+                rows = result.fetchall()
+                for row in rows:
+                    await session.execute(
+                        text("SET LOCAL app.current_tenant = :tid"),
+                        {"tid": row.tenant_id},
+                    )
+                    # Devolver stock reservado
+                    await session.execute(
+                        text(
+                            "UPDATE stock_balances sb "
+                            "SET reserved_qty = sb.reserved_qty - ri.quantity, "
+                            "    available_qty = sb.available_qty + ri.quantity, "
+                            "    version = sb.version + 1, "
+                            "    updated_at = now() "
+                            "FROM reservation_items ri "
+                            "WHERE ri.reservation_id = :rid "
+                            "  AND sb.product_id = ri.product_id "
+                            "  AND sb.zone_id = ri.zone_id "
+                            "  AND sb.tenant_id = ri.tenant_id"
+                        ),
+                        {"rid": row.id},
+                    )
+                    await session.execute(
+                        text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
+                        {"id": row.id},
+                    )
+                if rows:
+                    await session.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # startup
     async for _ in get_redis():
         break
+    task = asyncio.create_task(_expire_reservations_loop())
     yield
-    # shutdown
+    task.cancel()
     await close_redis()
     await engine.dispose()
 
 
 app = FastAPI(
-    title="MicroNuba Inventory SaaS API",
-    description="Motor de inventarios transaccional Multi-Tenant.",
+    title="MicroNuba Inventory API",
     version="1.0.0",
+    description=(
+        "Motor de inventarios transaccional Multi-Tenant.\n\n"
+        "## Autenticación\n"
+        "Todos los endpoints (excepto `/v1/auth/login`) requieren `Authorization: Bearer <token>` "
+        "o `X-API-Key: <key>`.\n\n"
+        "## Multi-Tenant\n"
+        "Cada request opera exclusivamente sobre los datos del tenant autenticado. "
+        "El aislamiento está garantizado por RLS en PostgreSQL.\n\n"
+        "## Rate Limiting\n"
+        "Las cabeceras `X-RateLimit-Limit`, `X-RateLimit-Remaining` y `X-RateLimit-Reset` "
+        "informan el consumo por minuto según el tier de suscripción."
+    ),
+    contact={"name": "MicroNuba Support", "email": "api@micronuba.com"},
+    license_info={"name": "Propietario — Todos los derechos reservados"},
+    docs_url="/docs" if settings.ENABLE_SWAGGER else None,
+    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,
     lifespan=lifespan,
 )
 
@@ -46,7 +109,6 @@ async def inject_request_id(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
 
-    # Agregar headers de rate limit si están disponibles
     auth = getattr(request.state, "auth", None)
     if auth and auth.rate_limit_info:
         rl = auth.rate_limit_info
@@ -63,7 +125,13 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.include_router(v1_router)
 
 
-@app.get("/health", tags=["System"])
+@app.get(
+    "/health",
+    tags=["System"],
+    summary="Health check",
+    description="Verifica la conectividad con PostgreSQL y Redis.",
+    responses={503: {"description": "Servicio degradado"}},
+)
 async def health_check():
     from sqlalchemy import text
     from app.core.database import AsyncSessionLocal

@@ -9,17 +9,45 @@ from app.services.category import create_category, delete_category, get_category
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
 
-@router.get("", response_model=list)
+@router.get(
+    "",
+    response_model=list,
+    summary="Listar categorías",
+    description=(
+        "Retorna el árbol de categorías del tenant. "
+        "Con `flat=false` (default) retorna jerarquía anidada; con `flat=true` retorna lista plana. "
+        "Con `include_counts=true` agrega el conteo de productos por categoría."
+    ),
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def get_categories(
-    flat: bool = Query(False),
-    include_counts: bool = Query(False),
+    flat: bool = Query(False, description="Retornar lista plana en lugar de árbol anidado"),
+    include_counts: bool = Query(False, description="Incluir conteo de productos por categoría"),
     auth: AuthContext = Depends(require_catalog_read),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await list_categories(db, auth.tenant_id, flat, include_counts)
 
 
-@router.post("", response_model=CategoryResponse, status_code=201)
+@router.post(
+    "",
+    response_model=CategoryResponse,
+    status_code=201,
+    summary="Crear categoría",
+    description=(
+        "Crea una nueva categoría. Si se envía `parent_id`, se crea como sub-categoría. "
+        "El `path` se construye automáticamente como jerarquía materializada (ej. `Electronics / Monitors`)."
+    ),
+    responses={
+        201: {"description": "Categoría creada"},
+        404: {"description": "Categoría padre no encontrada"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def add_category(
     body: CategoryCreate,
     request: Request,
@@ -36,7 +64,16 @@ async def add_category(
     return cat
 
 
-@router.get("/{cat_id}", response_model=CategoryResponse)
+@router.get(
+    "/{cat_id}",
+    response_model=CategoryResponse,
+    summary="Obtener categoría por ID",
+    description="Retorna el detalle de una categoría incluyendo su path jerárquico completo.",
+    responses={
+        404: {"description": "Categoría no encontrada"},
+        401: {"description": "No autenticado"},
+    },
+)
 async def get_category_detail(
     cat_id: str,
     auth: AuthContext = Depends(require_catalog_read),
@@ -45,7 +82,17 @@ async def get_category_detail(
     return await get_category(cat_id, db, auth.tenant_id)
 
 
-@router.patch("/{cat_id}", response_model=CategoryResponse)
+@router.patch(
+    "/{cat_id}",
+    response_model=CategoryResponse,
+    summary="Actualizar categoría",
+    description="Actualiza parcialmente el nombre o el padre de una categoría. El path se recalcula automáticamente.",
+    responses={
+        404: {"description": "Categoría no encontrada"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def patch_category(
     cat_id: str,
     body: CategoryUpdate,
@@ -63,7 +110,22 @@ async def patch_category(
     return updated
 
 
-@router.delete("/{cat_id}", status_code=204)
+@router.delete(
+    "/{cat_id}",
+    status_code=204,
+    summary="Eliminar categoría",
+    description=(
+        "Elimina la categoría. Los productos asociados quedan sin categoría (`category_id = null`). "
+        "No se puede eliminar si tiene sub-categorías activas."
+    ),
+    responses={
+        204: {"description": "Categoría eliminada"},
+        409: {"description": "La categoría tiene sub-categorías activas"},
+        404: {"description": "Categoría no encontrada"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
 async def remove_category(
     cat_id: str,
     request: Request,
