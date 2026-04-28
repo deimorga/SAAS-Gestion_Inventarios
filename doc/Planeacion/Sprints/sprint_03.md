@@ -121,25 +121,148 @@ CREATE POLICY tenant_isolation ON valuation_snapshots
 ## 📖 Documentación API (DOC-001)
 
 ### Objetivo
-Publicar la documentación de la API de forma segura y accesible para integradores externos, sin exponer `/docs`/`/redoc` en producción.
+Publicar la documentación de la API de forma segura y accesible para integradores externos, sin exponer `/docs`/`/redoc` en producción. La documentación cubre **todos los endpoints existentes (Sprint 1 y 2) y todos los que se implementen en adelante**. A partir de este sprint, documentar cada endpoint es parte del DoD de cada tarea.
 
-### Plan de implementación
+---
+
+### Alcance — Endpoints a documentar (Sprint 1 + Sprint 2)
+
+#### Gobierno y Seguridad (`auth`, `tenants`, `api-keys`, `audit`)
+
+| Método | Endpoint | Sprint |
+|---|---|---|
+| `POST` | `/v1/auth/login` | 1 |
+| `POST` | `/v1/auth/refresh` | 1 |
+| `POST` | `/v1/auth/logout` | 1 |
+| `GET` | `/v1/tenants/me` | 1 |
+| `PATCH` | `/v1/tenants/me` | 1 |
+| `GET` | `/v1/tenants/me/policy` | 1 |
+| `PATCH` | `/v1/tenants/me/policy` | 1 |
+| `GET` | `/v1/api-keys` | 1 |
+| `POST` | `/v1/api-keys` | 1 |
+| `DELETE` | `/v1/api-keys/{id}` | 1 |
+| `GET` | `/v1/audit-logs` | 1 |
+
+#### Catálogo (`products`, `categories`, `uom`)
+
+| Método | Endpoint | Sprint |
+|---|---|---|
+| `GET` | `/v1/products` | 1 |
+| `POST` | `/v1/products` | 1 |
+| `GET` | `/v1/products/{id}` | 1 |
+| `PATCH` | `/v1/products/{id}` | 1 |
+| `DELETE` | `/v1/products/{id}` | 1 |
+| `GET` | `/v1/products/{id}/uoms` | 1 |
+| `POST` | `/v1/products/{id}/uoms` | 1 |
+| `DELETE` | `/v1/products/{id}/uoms/{uom_id}` | 1 |
+| `GET` | `/v1/categories` | 1 |
+| `POST` | `/v1/categories` | 1 |
+| `GET` | `/v1/categories/{id}` | 1 |
+| `PATCH` | `/v1/categories/{id}` | 1 |
+| `DELETE` | `/v1/categories/{id}` | 1 |
+
+#### Almacenes y Zonas (`warehouses`)
+
+| Método | Endpoint | Sprint |
+|---|---|---|
+| `GET` | `/v1/warehouses` | 2 |
+| `POST` | `/v1/warehouses` | 2 |
+| `GET` | `/v1/warehouses/{id}` | 2 |
+| `PATCH` | `/v1/warehouses/{id}` | 2 |
+| `GET` | `/v1/warehouses/{id}/zones` | 2 |
+| `POST` | `/v1/warehouses/{id}/zones` | 2 |
+| `GET` | `/v1/warehouses/zones/{zone_id}` | 2 |
+| `PATCH` | `/v1/warehouses/zones/{zone_id}` | 2 |
+
+#### Motor Transaccional (`transactions`, `stock`, `ledger`)
+
+| Método | Endpoint | Sprint |
+|---|---|---|
+| `POST` | `/v1/transactions/receipts` | 2 |
+| `POST` | `/v1/transactions/issues` | 2 |
+| `POST` | `/v1/transactions/transfers` | 2 |
+| `POST` | `/v1/transactions/adjustments` | 2 |
+| `GET` | `/v1/stock/balances` | 2 |
+| `GET` | `/v1/ledger` | 2 |
+
+**Total endpoints existentes a documentar: ~37**
+
+---
+
+### Convención de Documentación (aplica a Sprint 3 en adelante)
+
+Todo endpoint nuevo DEBE incluir en el momento de su implementación:
+
+#### 1. En el decorador FastAPI
+
+```python
+@router.post(
+    "/receipts",
+    summary="Registrar entrada de mercancía",
+    description="Crea una transacción de tipo RECEIPT. Actualiza stock_balances, recalcula CPP y registra en inventory_ledger.",
+    response_description="Transacción creada con items procesados",
+    status_code=201,
+    responses={
+        409: {"description": "Stock insuficiente o conflicto de concurrencia (OCC agotado)"},
+        422: {"description": "Datos de entrada inválidos"},
+    },
+)
+```
+
+#### 2. En los schemas Pydantic
+
+```python
+class ReceiptItem(BaseModel):
+    product_id: str = Field(..., description="UUID del producto", examples=["550e8400-e29b-41d4-a716-446655440000"])
+    quantity: Decimal = Field(..., gt=0, description="Cantidad a recibir (mayor que 0)", examples=[10.5])
+    unit_cost: Decimal = Field(..., gt=0, description="Costo unitario en moneda local", examples=[42500.00])
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "product_id": "550e8400-e29b-41d4-a716-446655440000",
+                "quantity": 10.5,
+                "unit_cost": 42500.00,
+            }
+        }
+    )
+```
+
+#### 3. En `app/main.py` — metadata de la app
+
+```python
+app = FastAPI(
+    title="MicroNuba Inventory API",
+    version="1.0.0",
+    description="API de gestión de inventarios multi-tenant. ...",
+    contact={"name": "MicroNuba", "email": "api@micronuba.com"},
+    license_info={"name": "Propietario"},
+    docs_url="/docs" if settings.ENABLE_SWAGGER else None,
+    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,
+)
+```
+
+---
+
+### Plan de implementación (este sprint)
 
 | Paso | Actividad | Archivos afectados |
 |---|---|---|
-| 1 | Enriquecer schemas Pydantic con `description` y `json_schema_extra` (examples) | `app/schemas/*.py` |
-| 2 | Agregar `summary`, `description` y `responses` a todos los endpoints | `app/api/v1/endpoints/*.py` |
-| 3 | Configurar metadata de la app: `title`, `version`, `description`, `contact`, `license_info` | `app/main.py` |
-| 4 | Control de `/docs` y `/redoc` via `ENABLE_SWAGGER` en env (default `false` en prod) | `app/core/config.py` + `app/main.py` |
-| 5 | Script para exportar `openapi.json` estático | `scripts/export_openapi.py` |
+| 1 | Configurar metadata de la app + control de `/docs`/`/redoc` por env | `app/main.py`, `app/core/config.py` |
+| 2 | Enriquecer schemas Sprint 1 (auth, tenant, api-keys, catalog) con `description` + `examples` | `app/schemas/auth.py`, `tenant.py`, `api_key.py`, `catalog.py` |
+| 3 | Enriquecer schemas Sprint 2 (warehouse, inventory) | `app/schemas/warehouse.py`, `inventory.py` |
+| 4 | Agregar `summary`/`description`/`responses` a endpoints Sprint 1 | `app/api/v1/endpoints/auth.py`, `tenant.py`, `api_keys.py`, `audit_logs.py`, `categories.py`, `products.py` |
+| 5 | Agregar `summary`/`description`/`responses` a endpoints Sprint 2 | `app/api/v1/endpoints/warehouses.py`, `inventory.py` |
+| 6 | Documentar endpoints Sprint 3 al implementarlos (T-301 → T-307) | `app/api/v1/endpoints/reports.py`, `reservations.py` |
+| 7 | Script de exportación `scripts/export_openapi.py` | `scripts/export_openapi.py` |
 
 ### Comportamiento por entorno
 
 | Entorno | `/docs` | `/redoc` | `openapi.json` |
 |---|---|---|---|
-| Development | ✅ Habilitado | ✅ Habilitado | ✅ Disponible |
-| Staging | ✅ Habilitado | ✅ Habilitado | ✅ Disponible |
-| Production | ❌ Deshabilitado | ❌ Deshabilitado | ✅ Exportado a `doc/api/openapi.json` en CI |
+| Development | ✅ Habilitado | ✅ Habilitado | ✅ Disponible en `/openapi.json` |
+| Staging | ✅ Habilitado | ✅ Habilitado | ✅ Disponible en `/openapi.json` |
+| Production | ❌ Deshabilitado | ❌ Deshabilitado | ✅ Exportado a `doc/api/openapi.json` vía `scripts/export_openapi.py` |
 
 ---
 
@@ -170,5 +293,9 @@ Publicar la documentación de la API de forma segura y accesible para integrador
 | OCC aplicado en reservas | Máx 3 reintentos; 409 si se agota | ⏳ |
 | Snapshot genera en background | 202 Accepted; procesa sin bloquear | ⏳ |
 | Auto-expiry devuelve stock | `available_qty` correcto tras expiración | ⏳ |
+| **Todos los endpoints S1+S2 documentados** | `summary` + `description` + `responses` + examples en schemas | ⏳ |
+| **Todos los endpoints S3 documentados al implementarse** | Convención DOC-001 aplicada desde la primera línea de código | ⏳ |
 | OpenAPI exportado sin errores | `scripts/export_openapi.py` ejecutable | ⏳ |
 | `/docs` deshabilitado en prod | `ENABLE_SWAGGER=false` → 404 en `/docs` | ⏳ |
+
+> **Regla a partir de Sprint 3:** Ningún endpoint nuevo se considera terminado sin su documentación OpenAPI (summary, description, responses, examples en el schema). Esto aplica a todos los sprints futuros.
