@@ -52,9 +52,9 @@
 | 21 | RF-026 | Reservas | Hard Commitment | P1 | M | Sprint 3 | ✅ Completado | RF-025 |
 | 22 | RF-027 | Reservas | Auto-Expiration (worker) | P1 | M | Sprint 3 | ✅ Completado | RF-025 |
 | 23 | DOC-001 | Docs | Documentación API (OpenAPI enriquecido + export estático) | P1 | S | Sprint 3 | ✅ Completado | RF-001..RF-022 |
-| 24 | RF-033 | Integración | Webhooks (Push) | P2 | L | Sprint 4 | ⏳ Pendiente | RF-001 |
-| 25 | RF-034 | Integración | Bulk Engine (masivas) | P2 | L | Sprint 4 | ⏳ Pendiente | RF-016, RF-006 |
-| 26 | RF-035 | Integración | Inventario Cíclico | P2 | L | Sprint 4 | ⏳ Pendiente | RF-019 |
+| 24 | RF-033 | Integración | Webhooks (Push) | P2 | L | Sprint 4 | ✅ Completado | RF-001 |
+| 25 | RF-034 | Integración | Bulk Engine (masivas) | P2 | L | Sprint 4 | ✅ Completado | RF-016, RF-006 |
+| 26 | RF-035 | Integración | Inventario Cíclico | P2 | L | Sprint 4 | ✅ Completado | RF-019 |
 | 27 | RF-009 | Catálogo | Kits/Combos (BOM) | P2 | L | Sprint 5 | ⏳ Pendiente | RF-006, RF-017 |
 | 28 | RF-010 | Catálogo | Trazabilidad Lotes/Seriales | P2 | L | Sprint 5 | ⏳ Pendiente | RF-006, RF-016 |
 | 29 | RF-011 | Catálogo | Directorio de Proveedores | P1 | M | Sprint 5 | ⏳ Pendiente | RF-006 |
@@ -75,5 +75,5 @@
 | Sprint 1 | RF-001..RF-008 | XL (9 tareas) | Gobierno + Catálogo Base | ✅ Completado (48 tests, 90% cov) |
 | Sprint 2 | RF-013, RF-016..RF-020, RF-022 | XL (9 tareas) | Almacenes + Motor Transaccional | ✅ Completado (84 tests, 93% cov) |
 | Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ✅ Completado (111 tests, 92% cov) |
-| Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ⏳ Pendiente |
+| Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ✅ Completado (154 tests, 91% cov) |
 | Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (~12 tareas) | Trazabilidad Avanzada | ⏳ Pendiente |

@@ -58,7 +58,7 @@ Cada sprint sigue el workflow API-First: Modelos → Schemas → Services → En
 
 | Sprint | Duración | Objetivo | RF Incluidos | Módulos |
 |--------|----------|----------|-------------|---------|
-| Sprint 4 | 2026-04-28 → 2026-05-11 | Conectividad con ecosistema externo | RF-033 a RF-035 | Integración (Webhooks + Bulk + Cíclico) |
+| Sprint 4 | 2026-04-28 → 2026-04-28 | Conectividad con ecosistema externo | RF-033 a RF-035 | ✅ Completado | 154 tests, 91% cov, 0 ruff/mypy |
 | Sprint 5 | 2 semanas | Trazabilidad y funciones avanzadas | RF-009 a RF-012, RF-014, RF-015, RF-021, RF-023, RF-024, RF-028 | Catálogo+, Sedes+, Motor+ |
 
 ---

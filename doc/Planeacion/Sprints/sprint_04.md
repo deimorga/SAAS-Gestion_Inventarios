@@ -1,8 +1,8 @@
 # Sprint 4 — Webhooks, Bulk Engine e Inventario Cíclico
 
 **Fecha Inicio:** 2026-04-28
-**Fecha Fin Estimada:** 2026-05-11
-**Estado:** ⏳ Pendiente
+**Fecha Fin Real:** 2026-04-28
+**Estado:** ✅ Completado
 
 ---
 
@@ -16,12 +16,12 @@ Conectar MicroNuba con el ecosistema externo y habilitar operaciones de alta esc
 
 | ID | Requerimiento | Tarea | Estado | Notas |
 |---|---|---|---|---|
-| T-401 | RF-033 | Webhook Endpoints Registry — CRUD de URLs de destino | ⏳ Pendiente | Tablas `webhook_endpoints` + `webhook_deliveries`; migración 006 |
-| T-402 | RF-033 | Webhook Dispatcher — envío HTTP + reintento exponencial | ⏳ Pendiente | Background loop; HMAC-SHA256 signing; `X-Webhook-Signature` |
-| T-403 | RF-034 | Bulk Engine — Receipts + Issues masivos (hasta 500 items) | ⏳ Pendiente | Validación por ítem; respuesta parcial success/failure |
-| T-404 | RF-034 | Bulk Engine — Transfers masivos + report de resultado | ⏳ Pendiente | Depende de T-403; mismo patrón pero con zona origen/destino |
-| T-405 | RF-035 | Inventario Cíclico — Sesiones y captura de expected_qty | ⏳ Pendiente | Tablas `cycle_count_sessions` + `cycle_count_items`; migración 007 |
-| T-406 | RF-035 | Inventario Cíclico — Conteo, cierre y ajustes automáticos | ⏳ Pendiente | `POST /{id}/close`; genera `ADJUSTMENT` si `apply_adjustments=true` |
+| T-401 | RF-033 | Webhook Endpoints Registry — CRUD de URLs de destino | ✅ Completado | Tablas `webhook_endpoints` + `webhook_deliveries`; migración 006 |
+| T-402 | RF-033 | Webhook Dispatcher — envío HTTP + reintento exponencial | ✅ Completado | Background loop; HMAC-SHA256 signing; `X-Webhook-Signature` |
+| T-403 | RF-034 | Bulk Engine — Receipts + Issues masivos (hasta 500 items) | ✅ Completado | Validación por ítem; respuesta parcial success/failure |
+| T-404 | RF-034 | Bulk Engine — Transfers masivos + report de resultado | ✅ Completado | Depende de T-403; mismo patrón pero con zona origen/destino |
+| T-405 | RF-035 | Inventario Cíclico — Sesiones y captura de expected_qty | ✅ Completado | Tablas `cycle_count_sessions` + `cycle_count_items`; migración 007 |
+| T-406 | RF-035 | Inventario Cíclico — Conteo, cierre y ajustes automáticos | ✅ Completado | `POST /{id}/close`; genera `ADJUSTMENT` si `apply_adjustments=true` |
 
 ---
 
@@ -256,15 +256,15 @@ core_backend/
 
 | Criterio | Umbral | Estado |
 |----------|--------|--------|
-| Cobertura global ≥80% | ≥80% | ⏳ Pendiente |
-| 0 errores `ruff` | `All checks passed!` | ⏳ Pendiente |
-| 0 errores `mypy` | `Success: no issues found` | ⏳ Pendiente |
-| RLS validado en tablas nuevas | `webhook_endpoints`, `webhook_deliveries`, `cycle_count_sessions`, `cycle_count_items` | ⏳ Pendiente |
-| Webhook firma HMAC verificable | Header `X-Webhook-Signature` presente y correcto en cada envío | ⏳ Pendiente |
-| Webhook reintento exponencial | 3 intentos: 30s → 5min → 30min; status → `FAILED` al agotarse | ⏳ Pendiente |
-| Bulk respuesta parcial | Fallos individuales no detienen el lote; `results` contiene índice + detalle | ⏳ Pendiente |
-| Cycle count cierra con ajustes | `apply_adjustments=true` genera entradas `ADJUSTMENT` en `transactions` + `inventory_ledger` | ⏳ Pendiente |
-| Convención DOC-001 aplicada | Todos los endpoints nuevos con `summary` + `description` + `responses` + examples | ⏳ Pendiente |
+| Cobertura global ≥80% | ≥80% | ✅ 91% |
+| 0 errores `ruff` | `All checks passed!` | ✅ |
+| 0 errores `mypy` | `Success: no issues found` | ✅ 75 archivos |
+| RLS validado en tablas nuevas | `webhook_endpoints`, `webhook_deliveries`, `cycle_count_sessions`, `cycle_count_items` | ✅ |
+| Webhook firma HMAC verificable | Header `X-Webhook-Signature` presente y correcto en cada envío | ✅ |
+| Webhook reintento exponencial | 3 intentos: 30s → 5min → 30min; status → `FAILED` al agotarse | ✅ |
+| Bulk respuesta parcial | Fallos individuales no detienen el lote; `results` contiene índice + detalle | ✅ |
+| Cycle count cierra con ajustes | `apply_adjustments=true` genera entradas `ADJUSTMENT` en `transactions` + `inventory_ledger` | ✅ |
+| Convención DOC-001 aplicada | Todos los endpoints nuevos con `summary` + `description` + `responses` + examples | ✅ |
 
 ---
 
@@ -272,9 +272,9 @@ core_backend/
 
 | Métrica | Sprint 1 | Sprint 2 | Sprint 3 | Sprint 4 (meta) |
 |---------|----------|----------|----------|-----------------|
-| Tests totales | 48 | 84 | 111 | ~150 |
-| Cobertura | 90% | 93% | 92% | ≥80% |
-| Ruff errors | 0 | 0 | 0 | 0 |
-| Mypy errors | 0 | 0 | 0 | 0 |
-| Endpoints totales | ~17 | ~27 | ~37 | ~52 |
-| Migraciones | 002 | 003 | 004 + 005 | 006 + 007 |
+| Tests totales | 48 | 84 | 111 | **154** |
+| Cobertura | 90% | 93% | 92% | **91%** |
+| Ruff errors | 0 | 0 | 0 | **0** |
+| Mypy errors | 0 | 0 | 0 | **0** |
+| Endpoints totales | ~17 | ~27 | ~37 | **~52** |
+| Migraciones | 002 | 003 | 004 + 005 | **006 + 007** |
