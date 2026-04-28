@@ -15,7 +15,12 @@ from app.core.redis_client import close_redis, get_redis
 
 
 async def _expire_reservations_loop() -> None:
-    """Tarea de fondo: expira reservas vencidas cada 60 segundos."""
+    """Tarea de fondo: expira reservas vencidas cada 60 segundos.
+
+    La tabla reservations tiene RLS FORCE, por lo que no se puede consultar
+    sin tenant context. Se itera sobre la tabla tenants (sin RLS) y se
+    procesa cada tenant con su contexto.
+    """
     from sqlalchemy import text
     from app.core.database import AsyncSessionLocal
 
@@ -23,39 +28,48 @@ async def _expire_reservations_loop() -> None:
         await asyncio.sleep(60)
         try:
             async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    text(
-                        "SELECT id, tenant_id FROM reservations "
-                        "WHERE status = 'ACTIVE' AND expires_at <= now()"
-                    )
-                )
-                rows = result.fetchall()
-                for row in rows:
+                tenant_rows = (
+                    await session.execute(text("SELECT id FROM tenants"))
+                ).fetchall()
+
+                expired_any = False
+                for tenant_row in tenant_rows:
+                    tid = str(tenant_row.id)
                     await session.execute(
-                        text("SET LOCAL app.current_tenant = :tid"),
-                        {"tid": row.tenant_id},
+                        text("SET LOCAL app.current_tenant = :tid"), {"tid": tid}
                     )
-                    # Devolver stock reservado
-                    await session.execute(
-                        text(
-                            "UPDATE stock_balances sb "
-                            "SET reserved_qty = sb.reserved_qty - ri.quantity, "
-                            "    available_qty = sb.available_qty + ri.quantity, "
-                            "    version = sb.version + 1, "
-                            "    updated_at = now() "
-                            "FROM reservation_items ri "
-                            "WHERE ri.reservation_id = :rid "
-                            "  AND sb.product_id = ri.product_id "
-                            "  AND sb.zone_id = ri.zone_id "
-                            "  AND sb.tenant_id = ri.tenant_id"
-                        ),
-                        {"rid": row.id},
-                    )
-                    await session.execute(
-                        text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
-                        {"id": row.id},
-                    )
-                if rows:
+                    expired_rows = (
+                        await session.execute(
+                            text(
+                                "SELECT id FROM reservations "
+                                "WHERE status = 'ACTIVE' AND expires_at <= now()"
+                            )
+                        )
+                    ).fetchall()
+
+                    for row in expired_rows:
+                        await session.execute(
+                            text(
+                                "UPDATE stock_balances sb "
+                                "SET reserved_qty = sb.reserved_qty - ri.quantity, "
+                                "    available_qty = sb.available_qty + ri.quantity, "
+                                "    version = sb.version + 1, "
+                                "    updated_at = now() "
+                                "FROM reservation_items ri "
+                                "WHERE ri.reservation_id = :rid "
+                                "  AND sb.product_id = ri.product_id "
+                                "  AND sb.zone_id = ri.zone_id "
+                                "  AND sb.tenant_id = ri.tenant_id"
+                            ),
+                            {"rid": str(row.id)},
+                        )
+                        await session.execute(
+                            text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
+                            {"id": str(row.id)},
+                        )
+                        expired_any = True
+
+                if expired_any:
                     await session.commit()
         except Exception:
             pass
