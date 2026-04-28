@@ -1,7 +1,7 @@
 # Plan de Trabajo — MicroNuba Inventory SaaS
 
 > **Versión:** 1.1  
-> **Fecha:** 2026-04-29  
+> **Fecha:** 2026-04-28  
 > **Metodología:** Scrum adaptado (sprints de 2 semanas)
 
 ---
@@ -22,10 +22,10 @@ gantt
     section Fase 2 - Core MVP
     Sprint 1 - Gobierno + Catálogo       :done, s1, 2026-04-24, 4d
     Sprint 2 - Almacenes + Motor         :done, s2, 2026-04-28, 1d
-    Sprint 3 - Reportes + Reservas       :active, s3, 2026-04-29, 14d
+    Sprint 3 - Reportes + Reservas       :done, s3, 2026-04-28, 1d
 
     section Fase 3 - Avanzados
-    Sprint 4 - Integración               :s4, after s3, 14d
+    Sprint 4 - Integración               :active, s4, 2026-04-28, 14d
     Sprint 5 - Trazabilidad Avanzada     :s5, after s4, 14d
 ```
 
@@ -52,13 +52,13 @@ Cada sprint sigue el workflow API-First: Modelos → Schemas → Services → En
 |--------|---------|----------|-------------|--------|-----------|
 | Sprint 1 | 2026-04-24 → 2026-04-28 | Base segura + catálogo operativo | RF-001 a RF-008 | ✅ Completado | 48 tests, 90% cov, 0 ruff/mypy |
 | Sprint 2 | 2026-04-28 → 2026-04-28 | Motor transaccional funcionando | RF-013, RF-016 a RF-020, RF-022 | ✅ Completado | 84 tests, 93% cov, 0 ruff/mypy |
-| Sprint 3 | 2026-04-29 → 2026-05-12 | Reportes + reservas + docs API | RF-025 a RF-027, RF-029 a RF-032, DOC-001 | 🔄 En curso | — |
+| Sprint 3 | 2026-04-28 → 2026-04-28 | Reportes + reservas + docs API | RF-025 a RF-027, RF-029 a RF-032, DOC-001 | ✅ Completado | 111 tests, 92% cov, 0 ruff/mypy |
 
 ### Fase 3: Módulos Avanzados (Sprints 4–5)
 
 | Sprint | Duración | Objetivo | RF Incluidos | Módulos |
 |--------|----------|----------|-------------|---------|
-| Sprint 4 | 2 semanas | Conectividad con ecosistema externo | RF-033 a RF-035 | Integración |
+| Sprint 4 | 2026-04-28 → 2026-05-11 | Conectividad con ecosistema externo | RF-033 a RF-035 | Integración (Webhooks + Bulk + Cíclico) |
 | Sprint 5 | 2 semanas | Trazabilidad y funciones avanzadas | RF-009 a RF-012, RF-014, RF-015, RF-021, RF-023, RF-024, RF-028 | Catálogo+, Sedes+, Motor+ |
 
 ---

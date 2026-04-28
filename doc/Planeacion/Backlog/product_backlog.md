@@ -1,6 +1,6 @@
 # Product Backlog — MicroNuba Inventory SaaS
 
-> **Última actualización:** 2026-04-29  
+> **Última actualización:** 2026-04-28  
 > **Product Owner:** Usuario  
 > **Scrum Master:** Orquestador de Proyecto
 
@@ -44,14 +44,14 @@
 | 13 | RF-019 | Motor | Ajustes por Auditoría | P1 | M | Sprint 2 | ✅ Completado | RF-016 |
 | 14 | RF-020 | Motor | Devoluciones (RMA) | P1 | M | Sprint 2 | ✅ Completado | RF-016 |
 | 15 | RF-022 | Motor | Bajas (Scrap & Loss) | P1 | S | Sprint 2 | ✅ Completado | RF-017 |
-| 16 | RF-029 | Reportes | Kardex Histórico | P1 | M | Sprint 3 | ⏳ Pendiente | RF-016..RF-018 |
-| 17 | RF-030 | Reportes | Balance Snapshots (Valoración Contable) | P1 | M | Sprint 3 | ⏳ Pendiente | RF-016 |
-| 18 | RF-031 | Reportes | Alertas de Stock Bajo | P1 | M | Sprint 3 | ⏳ Pendiente | RF-006, RF-017 |
-| 19 | RF-032 | Reportes | Valoración de Inventario | P1 | M | Sprint 3 | ⏳ Pendiente | RF-016, RF-030 |
-| 20 | RF-025 | Reservas | Soft Reservations + TTL | P1 | L | Sprint 3 | ⏳ Pendiente | RF-017 |
-| 21 | RF-026 | Reservas | Hard Commitment | P1 | M | Sprint 3 | ⏳ Pendiente | RF-025 |
-| 22 | RF-027 | Reservas | Auto-Expiration (worker) | P1 | M | Sprint 3 | ⏳ Pendiente | RF-025 |
-| 23 | DOC-001 | Docs | Documentación API (OpenAPI enriquecido + export estático) | P1 | S | Sprint 3 | ⏳ Pendiente | RF-001..RF-022 |
+| 16 | RF-029 | Reportes | Kardex Histórico | P1 | M | Sprint 3 | ✅ Completado | RF-016..RF-018 |
+| 17 | RF-030 | Reportes | Balance Snapshots (Valoración Contable) | P1 | M | Sprint 3 | ✅ Completado | RF-016 |
+| 18 | RF-031 | Reportes | Alertas de Stock Bajo | P1 | M | Sprint 3 | ✅ Completado | RF-006, RF-017 |
+| 19 | RF-032 | Reportes | Valoración de Inventario | P1 | M | Sprint 3 | ✅ Completado | RF-016, RF-030 |
+| 20 | RF-025 | Reservas | Soft Reservations + TTL | P1 | L | Sprint 3 | ✅ Completado | RF-017 |
+| 21 | RF-026 | Reservas | Hard Commitment | P1 | M | Sprint 3 | ✅ Completado | RF-025 |
+| 22 | RF-027 | Reservas | Auto-Expiration (worker) | P1 | M | Sprint 3 | ✅ Completado | RF-025 |
+| 23 | DOC-001 | Docs | Documentación API (OpenAPI enriquecido + export estático) | P1 | S | Sprint 3 | ✅ Completado | RF-001..RF-022 |
 | 24 | RF-033 | Integración | Webhooks (Push) | P2 | L | Sprint 4 | ⏳ Pendiente | RF-001 |
 | 25 | RF-034 | Integración | Bulk Engine (masivas) | P2 | L | Sprint 4 | ⏳ Pendiente | RF-016, RF-006 |
 | 26 | RF-035 | Integración | Inventario Cíclico | P2 | L | Sprint 4 | ⏳ Pendiente | RF-019 |
@@ -74,6 +74,6 @@
 |--------|-------------|--------------|---------|
 | Sprint 1 | RF-001..RF-008 | XL (9 tareas) | Gobierno + Catálogo Base | ✅ Completado (48 tests, 90% cov) |
 | Sprint 2 | RF-013, RF-016..RF-020, RF-022 | XL (9 tareas) | Almacenes + Motor Transaccional | ✅ Completado (84 tests, 93% cov) |
-| Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ⏳ Pendiente |
-| Sprint 4 | RF-033..RF-035 | L (~6 tareas) | Integración | ⏳ Pendiente |
+| Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ✅ Completado (111 tests, 92% cov) |
+| Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ⏳ Pendiente |
 | Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (~12 tareas) | Trazabilidad Avanzada | ⏳ Pendiente |
