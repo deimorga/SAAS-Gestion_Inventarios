@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Expiración por defecto de reservas (minutos) cuando el cliente no envía expires_at
     RESERVATION_TTL_MINUTES: int = 30
 
+    # Webhook dispatcher
+    WEBHOOK_MAX_ATTEMPTS: int = 3
+    WEBHOOK_TIMEOUT_SECONDS: int = 10
+    WEBHOOK_POLL_SECONDS: int = 10
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 

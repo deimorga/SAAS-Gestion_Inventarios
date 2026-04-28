@@ -75,13 +75,118 @@ async def _expire_reservations_loop() -> None:
             pass
 
 
+async def _dispatch_webhooks_loop() -> None:
+    """Tarea de fondo: entrega webhook_deliveries pendientes cada WEBHOOK_POLL_SECONDS.
+
+    Itera por tenant (RLS FORCE) para poder consultar las tablas protegidas.
+    Reintenta con backoff exponencial: 30s → 5min → 30min (máx 3 intentos).
+    """
+    import hashlib
+    import hmac as hmac_module
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    import httpx
+    from sqlalchemy import text
+    from app.core.database import AsyncSessionLocal
+
+    _backoff = [30, 300, 1800]
+
+    while True:
+        await asyncio.sleep(settings.WEBHOOK_POLL_SECONDS)
+        try:
+            async with AsyncSessionLocal() as session:
+                tenant_rows = (
+                    await session.execute(text("SELECT id FROM tenants"))
+                ).fetchall()
+
+                for tenant_row in tenant_rows:
+                    tid = str(tenant_row.id)
+                    await session.execute(
+                        text("SET LOCAL app.current_tenant = :tid"), {"tid": tid}
+                    )
+                    pending = (
+                        await session.execute(
+                            text(
+                                "SELECT wd.id, wd.event_type, wd.payload, wd.attempts, "
+                                "       we.url, we.secret "
+                                "FROM webhook_deliveries wd "
+                                "JOIN webhook_endpoints we ON wd.endpoint_id = we.id "
+                                "WHERE wd.tenant_id = :tid AND wd.status = 'PENDING' "
+                                "AND (wd.next_attempt_at IS NULL OR wd.next_attempt_at <= now())"
+                            ),
+                            {"tid": tid},
+                        )
+                    ).fetchall()
+
+                    for row in pending:
+                        payload_bytes = json.dumps(row.payload).encode()
+                        sig = "sha256=" + hmac_module.new(
+                            row.secret.encode(), payload_bytes, hashlib.sha256
+                        ).hexdigest()
+
+                        try:
+                            async with httpx.AsyncClient(timeout=settings.WEBHOOK_TIMEOUT_SECONDS) as http:
+                                resp = await http.post(
+                                    row.url,
+                                    content=payload_bytes,
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "X-Webhook-Signature": sig,
+                                        "X-Webhook-Event": row.event_type,
+                                    },
+                                )
+                            delivered = resp.status_code < 300
+                            last_code = resp.status_code
+                            last_body = resp.text[:1000]
+                        except Exception as exc:
+                            delivered = False
+                            last_code = None
+                            last_body = str(exc)[:1000]
+
+                        new_attempts = row.attempts + 1
+                        if delivered:
+                            new_status = "DELIVERED"
+                            next_attempt = None
+                        elif new_attempts >= settings.WEBHOOK_MAX_ATTEMPTS:
+                            new_status = "FAILED"
+                            next_attempt = None
+                        else:
+                            new_status = "PENDING"
+                            backoff = _backoff[min(new_attempts - 1, len(_backoff) - 1)]
+                            next_attempt = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+
+                        await session.execute(
+                            text(
+                                "UPDATE webhook_deliveries "
+                                "SET status = :s, attempts = :a, last_response_code = :lc, "
+                                "    last_response_body = :lb, next_attempt_at = :na "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "s": new_status,
+                                "a": new_attempts,
+                                "lc": last_code,
+                                "lb": last_body,
+                                "na": next_attempt,
+                                "id": str(row.id),
+                            },
+                        )
+
+                await session.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     async for _ in get_redis():
         break
-    task = asyncio.create_task(_expire_reservations_loop())
+    task_reservations = asyncio.create_task(_expire_reservations_loop())
+    task_webhooks = asyncio.create_task(_dispatch_webhooks_loop())
     yield
-    task.cancel()
+    task_reservations.cancel()
+    task_webhooks.cancel()
     await close_redis()
     await engine.dispose()
 

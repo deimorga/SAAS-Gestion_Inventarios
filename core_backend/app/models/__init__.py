@@ -13,9 +13,13 @@ from app.models.stock_balance import StockBalance
 from app.models.inventory_ledger import InventoryLedger
 from app.models.reservation import Reservation, ReservationItem
 from app.models.valuation_snapshot import ValuationSnapshot
+from app.models.webhook import WebhookDelivery, WebhookEndpoint
+from app.models.cycle_count import CycleCountItem, CycleCountSession
 
 __all__ = [
     "Tenant", "User", "ApiKey", "AuditLog", "Category", "Product", "ProductUom", "KitComponent",
     "Warehouse", "Zone", "Transaction", "StockBalance", "InventoryLedger",
     "Reservation", "ReservationItem", "ValuationSnapshot",
+    "WebhookEndpoint", "WebhookDelivery",
+    "CycleCountSession", "CycleCountItem",
 ]
