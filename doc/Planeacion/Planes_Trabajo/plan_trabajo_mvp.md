@@ -1,7 +1,7 @@
 # Plan de Trabajo — MicroNuba Inventory SaaS
 
-> **Versión:** 1.0  
-> **Fecha:** 2026-04-24  
+> **Versión:** 1.1  
+> **Fecha:** 2026-04-29  
 > **Metodología:** Scrum adaptado (sprints de 2 semanas)
 
 ---
@@ -16,13 +16,13 @@ gantt
 
     section Fase 1 - Definición
     Definición Funcional (35 RF)         :done, f1a, 2026-04-24, 1d
-    Arquitectura y Specs Técnicas        :active, f1b, after f1a, 5d
-    ERD Detallado + Migraciones Base     :f1c, after f1b, 3d
+    Arquitectura y Specs Técnicas        :done, f1b, 2026-04-24, 2d
+    ERD Detallado + Migraciones Base     :done, f1c, 2026-04-26, 2d
 
     section Fase 2 - Core MVP
-    Sprint 1 - Gobierno + Catálogo       :s1, after f1c, 14d
-    Sprint 2 - Almacenes + Motor         :s2, after s1, 14d
-    Sprint 3 - Reportes + Reservas       :s3, after s2, 14d
+    Sprint 1 - Gobierno + Catálogo       :done, s1, 2026-04-24, 4d
+    Sprint 2 - Almacenes + Motor         :done, s2, 2026-04-28, 1d
+    Sprint 3 - Reportes + Reservas       :active, s3, 2026-04-29, 14d
 
     section Fase 3 - Avanzados
     Sprint 4 - Integración               :s4, after s3, 14d
@@ -33,32 +33,26 @@ gantt
 
 ## 2. Secuencia de Ejecución por Fase
 
-### Fase 1: Definición (Actual — Semana 1)
+### Fase 1: Definición (Completada)
 
 | Paso | Actividad | Responsable | Entregable | Estado |
 |------|-----------|-------------|------------|--------|
 | 1.1 | Definición Funcional completa (35 RF, 18 HU) | `experto_requerimientos_historias` | `doc/Funcional/mejorado/` (8 archivos) | ✅ Completado |
-| 1.2 | Definir arquitectura técnica y stack final | `arquitecto_soluciones` | `doc/Arquitectura/Arquitectura definida/` | ⏳ Próximo |
-| 1.3 | ERD definitivo con migraciones Alembic base | `experto_base_datos_postgres` | Modelo en `doc/Tecnico/` + SQL en `infra/` | ⏳ Pendiente |
-| 1.4 | Definiciones técnicas por módulo (contratos API) | `experto_backend_python` + `api-design-principles` | `doc/Tecnico/` | ⏳ Pendiente |
+| 1.2 | Definir arquitectura técnica y stack final | `arquitecto_soluciones` | `doc/Arquitectura/Arquitectura definida/` | ✅ Completado |
+| 1.3 | ERD definitivo con migraciones Alembic base | `experto_base_datos_postgres` | Migraciones 001–003 en `alembic/versions/` | ✅ Completado |
+| 1.4 | Definiciones técnicas por módulo (contratos API) | `experto_backend_python` | `doc/Definicion-Tecnica/` (7 módulos) | ✅ Completado |
 
 ### Fase 2: Desarrollo Core MVP (Sprints 1–3)
 
-Cada sprint sigue el **workflow de 11 pasos** del orquestador:
+Cada sprint sigue el workflow API-First: Modelos → Schemas → Services → Endpoints → Tests → QA Gate (ruff + mypy + pytest ≥80%).
 
-```
-Paso 1 (Funcional) ✅ → Paso 2 (Arquitectura) → Paso 3 (Técnico) → 
-Paso 5 (Backend) → Paso 7 (Tests) → Paso 7.5 (QA Gate) → 
-Paso 8 (E2E) → Paso 9 (Staging)
-```
+> **Nota:** UX/UI y Frontend se omiten en el MVP API-First.
 
-> **Nota:** Paso 4 (UX/UI) y Paso 6 (Frontend) se omiten en el MVP API-First.
-
-| Sprint | Duración | Objetivo | RF Incluidos | Módulos |
-|--------|----------|----------|-------------|---------|
-| Sprint 1 | 2 semanas | Base segura + catálogo operativo | RF-001 a RF-008 | Gobierno, Catálogo |
-| Sprint 2 | 2 semanas | Motor transaccional funcionando | RF-013, RF-016 a RF-020, RF-022 | Sedes, Motor |
-| Sprint 3 | 2 semanas | Reportes + reservas completas | RF-025 a RF-027, RF-029 a RF-032 | Reservas, Reportes |
+| Sprint | Período | Objetivo | RF Incluidos | Estado | Resultado |
+|--------|---------|----------|-------------|--------|-----------|
+| Sprint 1 | 2026-04-24 → 2026-04-28 | Base segura + catálogo operativo | RF-001 a RF-008 | ✅ Completado | 48 tests, 90% cov, 0 ruff/mypy |
+| Sprint 2 | 2026-04-28 → 2026-04-28 | Motor transaccional funcionando | RF-013, RF-016 a RF-020, RF-022 | ✅ Completado | 84 tests, 93% cov, 0 ruff/mypy |
+| Sprint 3 | 2026-04-29 → 2026-05-12 | Reportes + reservas + docs API | RF-025 a RF-027, RF-029 a RF-032, DOC-001 | 🔄 En curso | — |
 
 ### Fase 3: Módulos Avanzados (Sprints 4–5)
 
