@@ -7,6 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.reports import (
+    ExpiringBatch,
+    ExpiringBatchesResponse,
     KardexMovement,
     KardexProductSummary,
     KardexResponse,
@@ -330,3 +332,41 @@ async def get_low_stock(
         page=page,
         page_size=page_size,
     )
+
+
+async def get_expiring_batches(
+    db: AsyncSession,
+    tenant_id: str,
+    days_ahead: int,
+) -> ExpiringBatchesResponse:
+    rows = (
+        await db.execute(
+            text(
+                "SELECT b.id, b.batch_number, b.product_id, b.expiry_date, b.initial_qty, "
+                "p.sku, p.name, "
+                "(b.expiry_date - CURRENT_DATE) AS days_remaining "
+                "FROM batches b "
+                "JOIN products p ON p.id = b.product_id "
+                "WHERE b.tenant_id = :tid "
+                "AND b.expiry_date IS NOT NULL "
+                "AND b.expiry_date <= CURRENT_DATE + :days * INTERVAL '1 day' "
+                "ORDER BY b.expiry_date ASC"
+            ),
+            {"tid": tenant_id, "days": days_ahead},
+        )
+    ).fetchall()
+
+    data = [
+        ExpiringBatch(
+            batch_id=str(r.id),
+            batch_number=r.batch_number,
+            product_id=str(r.product_id),
+            product_sku=r.sku,
+            product_name=r.name,
+            expiry_date=str(r.expiry_date),
+            days_remaining=int(r.days_remaining),
+            initial_qty=Decimal(str(r.initial_qty)),
+        )
+        for r in rows
+    ]
+    return ExpiringBatchesResponse(data=data, total=len(data), days_ahead=days_ahead)

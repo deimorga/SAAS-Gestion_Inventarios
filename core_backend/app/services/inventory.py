@@ -23,6 +23,7 @@ from app.schemas.inventory import (
     IssueRequest,
     LedgerEntryResponse,
     ReceiptRequest,
+    RepackRequest,
     StockBalanceResponse,
     TransactionResponse,
     TransactionType,
@@ -436,6 +437,72 @@ async def process_adjustment(
             product_id=str(item.product_id), warehouse_id=str(body.warehouse_id), zone_id=str(body.zone_id),
             movement_type="ADJUSTMENT", qty_change=delta, unit_cost=product.current_cpp,
             reference_type="PHYSICAL_COUNT", reference_id=body.reference_id, reason_code=body.reason_code,
+            lot_number=item.lot_number,
+        ))
+
+    await db.commit()
+    await db.refresh(tx)
+    return _tx_response(tx)
+
+
+# ── Repack (RF-021) ───────────────────────────────────────────────────────────
+
+async def process_repack(
+    body: RepackRequest, db: AsyncSession, tenant_id: str, created_by: str | None = None
+) -> TransactionResponse:
+    """Consume source items and generate target items in the same zone (re-empaque)."""
+    warehouse_id = str(body.warehouse_id)
+    zone_id = str(body.zone_id)
+    await _get_active_warehouse(db, warehouse_id, tenant_id)
+    await _get_active_zone(db, zone_id, warehouse_id, tenant_id)
+
+    # Validate source stock before touching anything
+    for item in body.source_items:
+        balance = await _get_or_create_balance(
+            db, tenant_id, str(item.product_id), warehouse_id, zone_id, item.lot_number
+        )
+        if balance.available_qty < item.quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Stock insuficiente para producto {item.product_id}: disponible {balance.available_qty}, solicitado {item.quantity}",
+            )
+
+    total_items = len(body.source_items) + len(body.target_items)
+    tx = _make_transaction(
+        tenant_id, TransactionType.ADJUSTMENT,
+        "REPACK", body.reference_id, "REEMPAQUE", total_items, created_by,
+    )
+    db.add(tx)
+    await db.flush()
+
+    # Consume sources
+    for item in body.source_items:
+        product = await _get_active_product(db, str(item.product_id), tenant_id)
+        balance = await _get_or_create_balance(
+            db, tenant_id, str(item.product_id), warehouse_id, zone_id, item.lot_number
+        )
+        await _apply_balance_change(db, balance, -item.quantity)
+        db.add(_make_ledger_entry(
+            tenant_id=tenant_id, transaction_id=tx.id,
+            product_id=str(item.product_id), warehouse_id=warehouse_id, zone_id=zone_id,
+            movement_type="ISSUE", qty_change=-item.quantity, unit_cost=product.current_cpp,
+            reference_type="REPACK", reference_id=body.reference_id, reason_code="REEMPAQUE",
+            lot_number=item.lot_number,
+        ))
+
+    # Generate targets
+    for item in body.target_items:
+        product = await _get_active_product(db, str(item.product_id), tenant_id)
+        balance = await _get_or_create_balance(
+            db, tenant_id, str(item.product_id), warehouse_id, zone_id, item.lot_number
+        )
+        await _apply_balance_change(db, balance, item.quantity)
+        await _update_product_cpp(db, product, tenant_id, item.quantity, product.current_cpp)
+        db.add(_make_ledger_entry(
+            tenant_id=tenant_id, transaction_id=tx.id,
+            product_id=str(item.product_id), warehouse_id=warehouse_id, zone_id=zone_id,
+            movement_type="RECEIPT", qty_change=item.quantity, unit_cost=product.current_cpp,
+            reference_type="REPACK", reference_id=body.reference_id, reason_code="REEMPAQUE",
             lot_number=item.lot_number,
         ))
 

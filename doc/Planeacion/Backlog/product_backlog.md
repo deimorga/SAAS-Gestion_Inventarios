@@ -55,16 +55,16 @@
 | 24 | RF-033 | Integración | Webhooks (Push) | P2 | L | Sprint 4 | ✅ Completado | RF-001 |
 | 25 | RF-034 | Integración | Bulk Engine (masivas) | P2 | L | Sprint 4 | ✅ Completado | RF-016, RF-006 |
 | 26 | RF-035 | Integración | Inventario Cíclico | P2 | L | Sprint 4 | ✅ Completado | RF-019 |
-| 27 | RF-009 | Catálogo | Kits/Combos (BOM) | P2 | L | Sprint 5 | ⏳ Pendiente | RF-006, RF-017 |
-| 28 | RF-010 | Catálogo | Trazabilidad Lotes/Seriales | P2 | L | Sprint 5 | ⏳ Pendiente | RF-006, RF-016 |
-| 29 | RF-011 | Catálogo | Directorio de Proveedores | P1 | M | Sprint 5 | ⏳ Pendiente | RF-006 |
-| 30 | RF-012 | Catálogo | Costos de Reposición | P1 | M | Sprint 5 | ⏳ Pendiente | RF-016 |
-| 31 | RF-014 | Sedes | Zonificación (Bins/Slots) | P2 | M | Sprint 5 | ⏳ Pendiente | RF-013 |
-| 32 | RF-015 | Sedes | Bloqueos de Ubicación | P2 | M | Sprint 5 | ⏳ Pendiente | RF-014 |
-| 33 | RF-021 | Motor | Re-empaque | P2 | M | Sprint 5 | ⏳ Pendiente | RF-016, RF-017 |
-| 34 | RF-023 | Motor | Control de Vencimiento | P2 | M | Sprint 5 | ⏳ Pendiente | RF-010 |
-| 35 | RF-024 | Motor | Validación de Seriales | P2 | M | Sprint 5 | ⏳ Pendiente | RF-010 |
-| 36 | RF-028 | Reservas | Allocation por Canal | P2 | M | Sprint 5 | ⏳ Pendiente | RF-025 |
+| 27 | RF-009 | Catálogo | Kits/Combos (BOM) | P2 | L | Sprint 5 | ✅ Completado | RF-006, RF-017 |
+| 28 | RF-010 | Catálogo | Trazabilidad Lotes/Seriales | P2 | L | Sprint 5 | ✅ Completado | RF-006, RF-016 |
+| 29 | RF-011 | Catálogo | Directorio de Proveedores | P1 | M | Sprint 5 | ✅ Completado | RF-006 |
+| 30 | RF-012 | Catálogo | Costos de Reposición | P1 | M | Sprint 5 | ✅ Completado | RF-016 |
+| 31 | RF-014 | Sedes | Zonificación (Bins/Slots) | P2 | M | Sprint 5 | ✅ Completado | RF-013 |
+| 32 | RF-015 | Sedes | Bloqueos de Ubicación | P2 | M | Sprint 5 | ✅ Completado | RF-014 |
+| 33 | RF-021 | Motor | Re-empaque | P2 | M | Sprint 5 | ✅ Completado | RF-016, RF-017 |
+| 34 | RF-023 | Motor | Control de Vencimiento | P2 | M | Sprint 5 | ✅ Completado | RF-010 |
+| 35 | RF-024 | Motor | Validación de Seriales | P2 | M | Sprint 5 | ✅ Completado | RF-010 |
+| 36 | RF-028 | Reservas | Allocation por Canal | P2 | M | Sprint 5 | ✅ Completado | RF-025 |
 
 ---
 
@@ -76,4 +76,4 @@
 | Sprint 2 | RF-013, RF-016..RF-020, RF-022 | XL (9 tareas) | Almacenes + Motor Transaccional | ✅ Completado (84 tests, 93% cov) |
 | Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ✅ Completado (111 tests, 92% cov) |
 | Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ✅ Completado (154 tests, 91% cov) |
-| Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (~12 tareas) | Trazabilidad Avanzada | ⏳ Pendiente |
+| Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (10 tareas) | Trazabilidad Avanzada | ✅ Completado (208 tests, 92% cov) |

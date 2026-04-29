@@ -129,3 +129,20 @@ class ProductUomResponse(BaseModel):
     is_sale_uom: bool
 
     model_config = {"from_attributes": True}
+
+
+# ── Kit / BOM (RF-009) ────────────────────────────────────────────────────────
+
+class KitComponentCreate(BaseModel):
+    component_product_id: UUID = Field(..., description="ID del producto componente")
+    quantity: Decimal = Field(..., gt=0, description="Cantidad del componente por unidad de kit")
+
+
+class KitComponentResponse(BaseModel):
+    id: UUID
+    kit_product_id: UUID
+    component_product_id: UUID
+    component_sku: str
+    component_name: str
+    component_uom: str
+    quantity: Decimal

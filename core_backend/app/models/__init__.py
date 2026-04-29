@@ -15,6 +15,10 @@ from app.models.reservation import Reservation, ReservationItem
 from app.models.valuation_snapshot import ValuationSnapshot
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.models.cycle_count import CycleCountItem, CycleCountSession
+from app.models.supplier import Supplier, SupplierProduct
+from app.models.batch import Batch, SerialNumber
+from app.models.bin import Bin, LocationLock
+from app.models.channel_allocation import ChannelAllocation
 
 __all__ = [
     "Tenant", "User", "ApiKey", "AuditLog", "Category", "Product", "ProductUom", "KitComponent",
@@ -22,4 +26,8 @@ __all__ = [
     "Reservation", "ReservationItem", "ValuationSnapshot",
     "WebhookEndpoint", "WebhookDelivery",
     "CycleCountSession", "CycleCountItem",
+    "Supplier", "SupplierProduct",
+    "Batch", "SerialNumber",
+    "Bin", "LocationLock",
+    "ChannelAllocation",
 ]

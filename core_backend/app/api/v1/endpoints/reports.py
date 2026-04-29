@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import JSONResponse
 
 from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
-from app.schemas.reports import KardexResponse, LowStockResponse, SnapshotCreate, SnapshotResponse, ValuationResponse
+from app.schemas.reports import ExpiringBatchesResponse, KardexResponse, LowStockResponse, SnapshotCreate, SnapshotResponse, ValuationResponse
 from app.services import reports as svc
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -126,3 +126,25 @@ async def low_stock(
     db=Depends(get_auth_db),
 ):
     return await svc.get_low_stock(db, auth.tenant_id, warehouse_id, category_id, page, page_size)
+
+
+@router.get(
+    "/expiring",
+    response_model=ExpiringBatchesResponse,
+    summary="Lotes por vencer (RF-023)",
+    description=(
+        "Retorna los lotes con fecha de vencimiento dentro de los próximos `days_ahead` días. "
+        "Ordenado por fecha de vencimiento ascendente (más urgente primero). "
+        "Solo incluye lotes que tienen `expiry_date` definida."
+    ),
+    responses={
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
+async def expiring_batches(
+    days_ahead: int = Query(30, ge=1, le=365, description="Días hacia adelante para buscar vencimientos"),
+    auth: AuthContext = Depends(require_inventory_read),
+    db=Depends(get_auth_db),
+):
+    return await svc.get_expiring_batches(db, auth.tenant_id, days_ahead)

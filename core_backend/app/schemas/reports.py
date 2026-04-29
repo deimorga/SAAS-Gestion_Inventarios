@@ -112,3 +112,24 @@ class LowStockResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ── Expiry Report (RF-023) ────────────────────────────────────────────────────
+
+class ExpiringBatch(BaseModel):
+    batch_id: str
+    batch_number: str
+    product_id: str
+    product_sku: str
+    product_name: str
+    expiry_date: str
+    days_remaining: int
+    initial_qty: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExpiringBatchesResponse(BaseModel):
+    data: list[ExpiringBatch]
+    total: int
+    days_ahead: int

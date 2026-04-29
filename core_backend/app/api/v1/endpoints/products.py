@@ -3,9 +3,18 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_auth_db, require_catalog_read, require_catalog_write
-from app.schemas.catalog import ProductCreate, ProductResponse, ProductUomCreate, ProductUomResponse, ProductUpdate
+from app.schemas.catalog import (
+    KitComponentCreate,
+    KitComponentResponse,
+    ProductCreate,
+    ProductResponse,
+    ProductUomCreate,
+    ProductUomResponse,
+    ProductUpdate,
+)
 from app.schemas.common import PaginatedResponse
 from app.services.audit import log_action
+from app.services import kit as kit_svc
 from app.services.product import create_product, deactivate_product, get_product, list_products, update_product
 from app.services.uom import add_uom, delete_uom, list_uoms
 
@@ -218,3 +227,79 @@ async def remove_uom(
     db: AsyncSession = Depends(get_auth_db),
 ):
     await delete_uom(product_id, uom_id, db, auth.tenant_id)
+
+
+# ── Kit / BOM (RF-009) ────────────────────────────────────────────────────────
+
+@router.get(
+    "/{product_id}/components",
+    response_model=list[KitComponentResponse],
+    summary="Listar componentes del kit (BOM)",
+    description=(
+        "Retorna los componentes que conforman el kit/combo. "
+        "Solo aplica a productos con `is_kit=true`. "
+        "Cada componente incluye SKU, nombre, UOM y cantidad requerida por unidad de kit."
+    ),
+    responses={
+        404: {"description": "Producto no encontrado"},
+        401: {"description": "No autenticado"},
+    },
+)
+async def list_kit_components(
+    product_id: str,
+    auth: AuthContext = Depends(require_catalog_read),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    return await kit_svc.list_components(product_id, db, auth.tenant_id)
+
+
+@router.post(
+    "/{product_id}/components",
+    response_model=KitComponentResponse,
+    status_code=201,
+    summary="Agregar componente al kit (BOM)",
+    description=(
+        "Agrega un producto componente al kit con la cantidad requerida por unidad. "
+        "Al agregar el primer componente, el producto se marca automáticamente como `is_kit=true`. "
+        "No se permiten kits anidados: el componente no puede ser otro kit."
+    ),
+    responses={
+        201: {"description": "Componente agregado"},
+        404: {"description": "Producto (kit o componente) no encontrado"},
+        409: {"description": "El componente ya existe en el kit"},
+        422: {"description": "El componente es un kit o es el mismo producto"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
+async def add_kit_component(
+    product_id: str,
+    body: KitComponentCreate,
+    auth: AuthContext = Depends(require_catalog_write),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    return await kit_svc.add_component(product_id, str(body.component_product_id), body.quantity, db, auth.tenant_id)
+
+
+@router.delete(
+    "/{product_id}/components/{component_id}",
+    status_code=204,
+    summary="Eliminar componente del kit (BOM)",
+    description=(
+        "Elimina un componente del kit. "
+        "Si el kit queda sin componentes, `is_kit` se revierte a `false` automáticamente."
+    ),
+    responses={
+        204: {"description": "Componente eliminado"},
+        404: {"description": "Componente no encontrado en el kit"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
+async def remove_kit_component(
+    product_id: str,
+    component_id: str,
+    auth: AuthContext = Depends(require_catalog_write),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    await kit_svc.remove_component(product_id, component_id, db, auth.tenant_id)

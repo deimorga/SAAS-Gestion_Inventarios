@@ -7,6 +7,7 @@ from app.schemas.inventory import (
     AdjustmentRequest,
     IssueRequest,
     ReceiptRequest,
+    RepackRequest,
     TransactionResponse,
     TransferRequest,
 )
@@ -14,6 +15,7 @@ from app.services.inventory import (
     process_adjustment,
     process_issue,
     process_receipt,
+    process_repack,
     process_transfer,
     query_ledger,
     query_stock_balances,
@@ -129,6 +131,33 @@ async def adjustment(
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await process_adjustment(body, db, auth.tenant_id, created_by=auth.user_id)
+
+
+@transactions_router.post(
+    "/repacks",
+    response_model=TransactionResponse,
+    status_code=201,
+    summary="Re-empaque (RF-021)",
+    description=(
+        "Convierte una presentación de producto en otra dentro del mismo almacén/zona. "
+        "Consume los `source_items` (genera movimiento ISSUE) y produce los `target_items` (genera movimiento RECEIPT). "
+        "Toda la operación es atómica: si falla cualquier ítem se revierte todo."
+    ),
+    responses={
+        201: {"description": "Re-empaque registrado"},
+        404: {"description": "Producto, almacén o zona no encontrado"},
+        409: {"description": "Stock insuficiente en algún ítem origen"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
+async def repack(
+    body: RepackRequest,
+    request: Request,
+    auth: AuthContext = Depends(require_inventory_write),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    return await process_repack(body, db, auth.tenant_id, created_by=auth.user_id)
 
 
 @stock_router.get(

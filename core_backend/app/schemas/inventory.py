@@ -129,3 +129,19 @@ class LedgerEntryResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Repack (RF-021) ───────────────────────────────────────────────────────────
+
+class RepackItem(BaseModel):
+    product_id: UUID
+    quantity: Decimal = Field(..., gt=0)
+    lot_number: str | None = None
+
+
+class RepackRequest(BaseModel):
+    reference_id: str = Field(..., max_length=100)
+    warehouse_id: UUID
+    zone_id: UUID
+    source_items: list[RepackItem] = Field(..., min_length=1, description="Productos que se consumen en el re-empaque")
+    target_items: list[RepackItem] = Field(..., min_length=1, description="Productos que se generan tras el re-empaque")
