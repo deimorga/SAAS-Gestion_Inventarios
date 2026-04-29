@@ -1,0 +1,22 @@
+# Test local con gateway micronuba-infra.
+# Requiere: micronuba-infra corriendo (red micronuba_public activa, Traefik en :8090)
+# Requiere /etc/hosts: 127.0.0.1  api.inventarios.local
+#
+# Uso: docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up -d --build
+
+services:
+  api:
+    ports: []
+    networks:
+      - micronuba_public
+      - inv_app
+      - inv_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inv-api-local.rule=Host(`api.inventarios.local`)"
+      - "traefik.http.routers.inv-api-local.entrypoints=web"
+      - "traefik.http.services.inv-api-local.loadbalancer.server.port=8000"
+
+networks:
+  micronuba_public:
+    external: true

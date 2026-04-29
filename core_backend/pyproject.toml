@@ -24,3 +24,7 @@ ignore_missing_imports = true
 no_strict_optional = true
 # Pydantic v2 coerces str→UUID at runtime; suppress these known false positives
 disable_error_code = ["arg-type"]
+
+[tool.pyrefly]
+# Dependencies run inside Docker; local Python has none of them installed.
+ignore_missing_imports = true

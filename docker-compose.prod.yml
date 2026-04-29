@@ -1,0 +1,130 @@
+# Producción — requiere micronuba-infra corriendo (red micronuba_public activa).
+# Despliega con: docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  api:
+    build:
+      context: ./core_backend
+      dockerfile: Dockerfile.dev
+    container_name: inv-api
+    restart: unless-stopped
+    networks:
+      - micronuba_public
+      - inv_data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - ENABLE_SWAGGER=false
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/1
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inv-api.rule=Host(`${API_DOMAIN:-api.inventarios.micronuba.com}`)"
+      - "traefik.http.routers.inv-api.entrypoints=websecure"
+      - "traefik.http.routers.inv-api.tls.certresolver=le"
+      - "traefik.http.services.inv-api.loadbalancer.server.port=8000"
+      - "traefik.http.routers.inv-api.middlewares=inv-ratelimit"
+      - "traefik.http.middlewares.inv-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.inv-ratelimit.ratelimit.burst=50"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: ./core_backend
+      dockerfile: Dockerfile.dev
+    container_name: inv-worker
+    restart: unless-stopped
+    networks:
+      - inv_app
+      - inv_data
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4 -Q default,webhooks,bulk
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: ./core_backend
+      dockerfile: Dockerfile.dev
+    container_name: inv-beat
+    restart: unless-stopped
+    networks:
+      - inv_app
+    command: celery -A app.tasks beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      - APP_ENV=production
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@inv-redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: inv-postgres
+    restart: unless-stopped
+    networks:
+      - inv_data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - inv_postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init/:/docker-entrypoint-initdb.d/:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: inv-redis
+    restart: unless-stopped
+    networks:
+      - inv_app
+      - inv_data
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - inv_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  micronuba_public:
+    external: true
+  inv_app:
+    name: inv_app
+    internal: true
+  inv_data:
+    name: inv_data
+    internal: true
+
+volumes:
+  inv_postgres_data:
+    name: inv_postgres_data
+  inv_redis_data:
+    name: inv_redis_data

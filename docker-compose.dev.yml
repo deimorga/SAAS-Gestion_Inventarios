@@ -1,34 +1,17 @@
 version: "3.8"
 
-services:
-  traefik:
-    image: traefik:v3.0
-    container_name: inv-traefik
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entryPoints.web.address=:80"
-    ports:
-      - "80:80"
-      - "8080:8080" # Dashboard en dev
-    networks:
-      - inv_edge
-      - inv_app
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    restart: unless-stopped
+# Desarrollo local — sin gateway.
+# API accesible en http://localhost:8002
+# Docs en http://localhost:8002/docs
 
+services:
   api:
     build:
       context: ./core_backend
       dockerfile: Dockerfile.dev
     container_name: inv-api
+    ports:
+      - "8002:8000"
     networks:
       - inv_app
       - inv_data
@@ -41,10 +24,6 @@ services:
       - CELERY_BROKER_URL=redis://inv-redis:6379/1
     volumes:
       - ./core_backend:/app
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.inv-api.rule=Host(`api.inventory.local`)"
-      - "traefik.http.services.inv-api.loadbalancer.server.port=8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,8 +118,6 @@ services:
     restart: unless-stopped
 
 networks:
-  inv_edge:
-    name: inv_edge
   inv_app:
     name: inv_app
   inv_data:

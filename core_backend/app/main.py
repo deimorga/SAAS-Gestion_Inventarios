@@ -5,7 +5,9 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_redoc_html
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
@@ -209,7 +211,7 @@ app = FastAPI(
     contact={"name": "MicroNuba Support", "email": "api@micronuba.com"},
     license_info={"name": "Propietario — Todos los derechos reservados"},
     docs_url="/docs" if settings.ENABLE_SWAGGER else None,
-    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,
+    redoc_url=None,
     lifespan=lifespan,
 )
 
@@ -240,6 +242,18 @@ async def inject_request_id(request: Request, call_next):
 
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_html() -> HTMLResponse:
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title="MicroNuba Inventory API — ReDoc",
+        redoc_js_url="/static/redoc.standalone.js",
+    )
+
 
 app.include_router(v1_router)
 
