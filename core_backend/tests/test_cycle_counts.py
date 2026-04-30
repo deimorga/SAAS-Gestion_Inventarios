@@ -1,5 +1,4 @@
 """Tests para Inventario Cíclico (Sprint 4: T-405 y T-406)."""
-from decimal import Decimal
 
 import pytest
 import pytest_asyncio

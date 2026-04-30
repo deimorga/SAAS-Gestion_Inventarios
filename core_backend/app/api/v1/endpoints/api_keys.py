@@ -5,6 +5,7 @@ from app.api.deps import AuthContext, get_auth_db, require_admin
 from app.schemas.api_key import ApiKeyCreate, ApiKeyCreateResponse
 from app.schemas.common import PaginatedResponse
 from app.services.api_key import create_api_key, list_api_keys, revoke_api_key
+from app.services.api_key_rotation import rotate_api_key
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/api-keys", tags=["API Keys"])
@@ -91,3 +92,32 @@ async def delete_api_key(
         new_values={"is_active": False},
         performed_by={"type": "user", "id": auth.user_id},
     )
+
+
+@router.post(
+    "/{key_uuid}/rotate",
+    response_model=ApiKeyCreateResponse,
+    status_code=201,
+    summary="Rotar API Key",
+    description=(
+        "Genera una nueva API Key con los mismos atributos (scopes, nombre, IP whitelist) "
+        "que la existente. La fecha de expiración se calcula con staggering para evitar "
+        "colisiones entre tenants (±14 días desde hoy + API_KEY_EXPIRY_DAYS). "
+        "Con `immediate=true` la clave anterior se revoca al instante; "
+        "con `immediate=false` (default) permanece activa durante el período de gracia "
+        "configurado por el tenant (default 30 días)."
+    ),
+    responses={
+        201: {"description": "Nueva API Key generada. El secreto solo se expone en esta respuesta."},
+        404: {"description": "API Key no encontrada"},
+        409: {"description": "La API Key ya está inactiva"},
+        422: {"description": "Datos de entrada inválidos"},
+    },
+)
+async def rotate_key(
+    key_uuid: str,
+    immediate: bool = Query(False, description="Revocar la clave anterior inmediatamente"),
+    auth: AuthContext = Depends(require_admin),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    return await rotate_api_key(key_uuid, auth.tenant_id, immediate, db)

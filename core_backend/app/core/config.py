@@ -25,6 +25,26 @@ class Settings(BaseSettings):
     WEBHOOK_TIMEOUT_SECONDS: int = 10
     WEBHOOK_POLL_SECONDS: int = 10
 
+    # Admin bootstrap — protege el endpoint POST /admin/auth/register
+    # Dejar vacío en producción una vez creado el primer super_admin
+    ADMIN_BOOTSTRAP_SECRET: str = ""
+
+    # Resend — proveedor de email transaccional
+    RESEND_API_KEY: str = "re_test_placeholder"
+    RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
+    RESEND_FROM_NAME: str = "MicroNuba"
+
+    # URL base para enlaces de activación de usuario en emails
+    # En prod: https://portal.micronuba.com  |  En dev: http://api.inventarios.local:8090
+    ACTIVATION_BASE_URL: str = "http://api.inventarios.local:8090"
+
+    # TTL del token de activación de usuario (horas)
+    ACTIVATION_TOKEN_TTL_HOURS: int = 48
+
+    # API Keys — política de expiración y rotación
+    API_KEY_EXPIRY_DAYS: int = 365
+    API_KEY_ROTATION_GRACE_DAYS: int = 30  # mín 7, máx 90 (por tenant vía config JSONB)
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 

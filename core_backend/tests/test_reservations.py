@@ -122,7 +122,7 @@ async def test_get_reservation_not_found(client, auth_headers_a):
 @pytest.mark.asyncio
 async def test_reservation_tenant_isolation(client, auth_headers_b, res_setup):
     """Tenant B no puede ver la reserva del Tenant A."""
-    create_resp = await _create_reservation(
+    await _create_reservation(
         client, {}, res_setup["wh"]["id"], res_setup["zone"]["id"], res_setup["prod"]["id"]
     )
     # Solo verificamos que B no tiene reservas del tenant A

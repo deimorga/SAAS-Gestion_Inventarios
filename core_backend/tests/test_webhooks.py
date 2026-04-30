@@ -1,7 +1,6 @@
 """Tests para el módulo de Webhooks (Sprint 4: T-401 y T-402)."""
 import hashlib
 import hmac
-import json
 
 import pytest
 import pytest_asyncio

@@ -16,6 +16,9 @@ _DEFAULT_CONFIG = {
     "require_reason_code": True,
     "default_currency": "COP",
     "timezone": "America/Bogota",
+    # API Key rotation: días de gracia antes de revocar la key anterior tras una rotación.
+    # Rango permitido: 7–90. El sistema no permite solapar fechas de expiración entre tenants.
+    "api_key_rotation_grace_days": 30,
 }
 
 

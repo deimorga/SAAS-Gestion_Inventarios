@@ -70,7 +70,7 @@ async def create_api_key(
 
 async def revoke_api_key(key_id: str, db: AsyncSession, tenant_id: str) -> None:
     result = await db.execute(
-        select(ApiKey).where(ApiKey.key_id == key_id, ApiKey.tenant_id == tenant_id)
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.tenant_id == tenant_id)
     )
     api_key = result.scalar_one_or_none()
     if api_key is None:

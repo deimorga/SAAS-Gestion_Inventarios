@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
-    auth, api_keys, tenant, audit_logs, products, categories,
+    auth, auth_activate, api_keys, tenant, audit_logs, products, categories,
     warehouses, reports, reservations, webhooks, bulk, cycle_counts,
-    suppliers, channel_allocations,
+    suppliers, channel_allocations, users,
 )
 from app.api.v1.endpoints.batches import router as batches_router, serials_router
 from app.api.v1.endpoints.bins import router as bins_router
@@ -12,6 +12,8 @@ from app.api.v1.endpoints.inventory import ledger_router, stock_router, transact
 router = APIRouter(prefix="/v1")
 
 router.include_router(auth.router)
+router.include_router(auth_activate.router)
+router.include_router(users.router)
 router.include_router(api_keys.router)
 router.include_router(tenant.router)
 router.include_router(audit_logs.router)

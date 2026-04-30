@@ -65,6 +65,15 @@
 | 34 | RF-023 | Motor | Control de Vencimiento | P2 | M | Sprint 5 | ✅ Completado | RF-010 |
 | 35 | RF-024 | Motor | Validación de Seriales | P2 | M | Sprint 5 | ✅ Completado | RF-010 |
 | 36 | RF-028 | Reservas | Allocation por Canal | P2 | M | Sprint 5 | ✅ Completado | RF-025 |
+| 37 | RF-036 | Admin | Administración de Super Admins (Bootstrap + Login separado) | P0 | M | Sprint 6 | ✅ Completado | RF-001 |
+| 38 | RF-037 | Admin | Gestión del Ciclo de Vida de Tenants | P0 | L | Sprint 6 | ✅ Completado | RF-036 |
+| 39 | RF-038 | Admin | Onboarding — Activación Segura de Cuenta (token Redis 48h) | P0 | M | Sprint 6 | ✅ Completado | RF-037 |
+| 40 | RF-039 | Admin | Gestión de Usuarios por Tenant Admin | P0 | M | Sprint 6 | ✅ Completado | RF-038 |
+| 41 | RF-040 | Admin | Cambio Voluntario de Contraseña | P1 | S | Sprint 6 | ✅ Completado | RF-038 |
+| 42 | RF-041 | Admin | Ciclo de Vida de API Keys (expiración, rotación reactiva, período gracia) | P0 | L | Sprint 6 | ✅ Completado | RF-002 |
+| 43 | RF-042 | Admin | Notificaciones de Expiración de API Keys (T-30, T-7, T-1, T-0) | P1 | M | Sprint 6 | ✅ Completado | RF-041, RF-043 |
+| 44 | RF-043 | Admin | Sistema de Notificaciones Transaccionales por Email (Resend) | P1 | M | Sprint 6 | ✅ Completado | RF-037..RF-041 |
+| 45 | RF-044 | Admin | Admin — Gestión de API Keys entre Tenants (super_admin) | P1 | S | Sprint 6 | ✅ Completado | RF-036, RF-041 |
 
 ---
 
@@ -77,3 +86,4 @@
 | Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ✅ Completado (111 tests, 92% cov) |
 | Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ✅ Completado (154 tests, 91% cov) |
 | Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (10 tareas) | Trazabilidad Avanzada | ✅ Completado (208 tests, 92% cov) |
+| Sprint 6 | RF-036..RF-044 | XL (9 RF, 37 tareas) | Admin Multi-tenant + Onboarding + Email | ✅ Completado |

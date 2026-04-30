@@ -28,6 +28,10 @@ async def authenticate_user(email: str, password: str, db: AsyncSession) -> User
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cuenta suspendida. Contacte soporte.")
 
+    # Separación de superficies: super_admin debe usar /admin/auth/login
+    if user.role == "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+
     result_tenant = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
     tenant = result_tenant.scalar_one_or_none()
 

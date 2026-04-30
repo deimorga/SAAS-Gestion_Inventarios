@@ -3,6 +3,7 @@
 Flujo de auth para endpoints protegidos:
   get_current_auth  →  valida JWT / API Key, aplica rate limit
   get_auth_db       →  abre sesión AsyncSession con RLS del tenant activo
+  get_admin_db      →  abre sesión con bypass de RLS (solo super_admin)
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,6 +28,11 @@ from app.models.api_key import ApiKey
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# UUID fijo del tenant interno — debe coincidir con la migración 012
+MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+# Sentinel que activa el bypass de RLS en las políticas de PostgreSQL
+_SUPER_ADMIN_SENTINEL = "__super_admin__"
+
 
 @dataclass
 class AuthContext:
@@ -37,6 +43,8 @@ class AuthContext:
     scopes: list[str] = field(default_factory=list)
     tier: str = "STARTER"
     rate_limit_info: dict = field(default_factory=dict)
+    # "full" para sesiones normales; "first_access" restringe a /auth/activate únicamente
+    token_scope: str = "full"
 
 
 # ── Rate limiting ──────────────────────────────────────────────────────────
@@ -87,6 +95,7 @@ async def get_current_auth(
         tenant_id = payload["tenant_id"]
         role = payload["role"]
         user_id = payload["sub"]
+        token_scope = payload.get("scope", "full")
 
         tier_key = f"tenant_tier:{tenant_id}"
         tier = await redis.get(tier_key) or "STARTER"
@@ -100,6 +109,7 @@ async def get_current_auth(
             auth_type="jwt",
             tier=tier,
             rate_limit_info=rl_info,
+            token_scope=token_scope,
         )
         request.state.auth = auth
         return auth
@@ -168,3 +178,30 @@ require_catalog_read = require_roles("tenant_admin", "super_admin", "inventory_m
 require_catalog_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
 require_inventory_read = require_roles("tenant_admin", "super_admin", "inventory_manager", "viewer")
 require_inventory_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
+
+
+# ── Guard exclusivo super_admin ────────────────────────────────────────────
+
+async def require_super_admin(
+    auth: AuthContext = Depends(get_current_auth),
+) -> AuthContext:
+    # 403 genérico — no revela que el endpoint de admin existe para otros roles
+    if auth.role != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+    return auth
+
+
+# ── Sesión con bypass de RLS — exclusiva para super_admin ─────────────────
+
+async def get_admin_db(
+    _auth: AuthContext = Depends(require_super_admin),
+) -> AsyncGenerator[AsyncSession, None]:
+    """Abre una sesión PostgreSQL con el sentinel __super_admin__ en
+    app.current_tenant, lo que activa el bypass de RLS definido en
+    la migración 012 para users, api_keys y audit_logs."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_tenant', :sentinel, true)"),
+            {"sentinel": _SUPER_ADMIN_SENTINEL},
+        )
+        yield session

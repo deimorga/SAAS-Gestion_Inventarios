@@ -139,6 +139,60 @@ async def auth_headers_b(client, user_b):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
+# ── Sprint 6: Super admin helpers ──────────────────────────────────────────
+
+MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+_SA_PASSWORD = "AdminPass123!XYZ"
+
+
+async def _insert_super_admin(email: str) -> str:
+    sa_uid = uid()
+    async with _TestSession() as session:
+        await session.execute(
+            text(
+                "INSERT INTO users "
+                "(id, tenant_id, email, password_hash, full_name, role, "
+                " is_active, must_change_password, created_at) "
+                "VALUES (:id, :tid, :email, :pw, 'Super Admin', 'super_admin', "
+                "        true, false, now())"
+            ),
+            {
+                "id": sa_uid,
+                "tid": MICRONUBA_TENANT_ID,
+                "email": email,
+                "pw": hash_password(_SA_PASSWORD),
+            },
+        )
+        await session.commit()
+    return sa_uid
+
+
+async def _delete_user_by_id(user_id: str) -> None:
+    async with _TestSession() as session:
+        await session.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+        await session.commit()
+
+
+@pytest_asyncio.fixture
+async def super_admin_user():
+    """Super admin pre-creado en DB; se elimina tras cada test."""
+    email = f"sa-{uid()[:8]}@micronuba.com"
+    sa_uid = await _insert_super_admin(email)
+    yield {"id": sa_uid, "email": email, "password": _SA_PASSWORD}
+    await _delete_user_by_id(sa_uid)
+
+
+@pytest_asyncio.fixture
+async def admin_auth_headers(client, super_admin_user):
+    """Headers JWT de super_admin listos para usar en endpoints /admin/*."""
+    resp = await client.post(
+        "/admin/auth/login",
+        json={"email": super_admin_user["email"], "password": super_admin_user["password"]},
+    )
+    assert resp.status_code == 200, f"Admin login falló: {resp.text}"
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
 # ── Sprint 2: Warehouse + Inventory helpers ────────────────────────────────
 
 

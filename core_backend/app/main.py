@@ -9,6 +9,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.admin.router import router as admin_router
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.core.database import engine
@@ -255,6 +256,7 @@ async def redoc_html() -> HTMLResponse:
     )
 
 
+app.include_router(admin_router)
 app.include_router(v1_router)
 
 
