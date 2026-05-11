@@ -117,6 +117,24 @@ services:
       retries: 3
     restart: unless-stopped
 
+  admin-portal:
+    build:
+      context: ./web_frontend
+      dockerfile: Dockerfile
+    container_name: inv-admin-portal
+    ports:
+      - "8081:8080"
+    networks:
+      - inv_app
+    environment:
+      - API_BASE_URL=http://inv-api:8000
+      - STORAGE_SECRET=${STORAGE_SECRET:-dev-secret-change-in-prod}
+      - PORT=8080
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   inv_app:
     name: inv_app

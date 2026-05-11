@@ -1,6 +1,6 @@
 # Overlay para desarrollo local con micronuba-infra.
 # Requiere: micronuba-infra corriendo (red micronuba_public activa, Traefik en :8090)
-# Requiere /etc/hosts: 127.0.0.1  api.inventarios.local
+# Requiere /etc/hosts: 127.0.0.1  api.inventarios.local admin.inventarios.local
 #
 # Uso: docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up -d
 
@@ -16,6 +16,18 @@ services:
       - "traefik.http.routers.inv-api-local.rule=Host(`api.inventarios.local`)"
       - "traefik.http.routers.inv-api-local.entrypoints=web"
       - "traefik.http.services.inv-api-local.loadbalancer.server.port=8000"
+      - "traefik.docker.network=micronuba_public"
+
+  admin-portal:
+    ports: []
+    networks:
+      - micronuba_public
+      - inv_app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inv-admin-local.rule=Host(`admin.inventarios.local`)"
+      - "traefik.http.routers.inv-admin-local.entrypoints=web"
+      - "traefik.http.services.inv-admin-local.loadbalancer.server.port=8080"
       - "traefik.docker.network=micronuba_public"
 
 networks:
