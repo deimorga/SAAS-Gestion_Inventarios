@@ -6,11 +6,43 @@ from pydantic import BaseModel, Field
 
 
 class BinCreate(BaseModel):
-    code: str = Field(..., min_length=1, max_length=50, pattern=r"^[A-Za-z0-9\-_]+$",
-                      description="Código del bin, único dentro de la zona")
-    name: str | None = Field(None, max_length=255)
-    max_weight_kg: Decimal | None = Field(None, gt=0, description="Capacidad máxima en kg")
-    max_volume_m3: Decimal | None = Field(None, gt=0, description="Capacidad máxima en m³")
+    code: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern=r"^[A-Za-z0-9\-_]+$",
+        description="Código del bin, único dentro de la zona. Solo letras, dígitos, guiones y guiones bajos.",
+        examples=["A-01-03"],
+    )
+    name: str | None = Field(
+        None,
+        max_length=255,
+        description="Nombre descriptivo del bin (ej: Estante A, Fila 1, Columna 3). Opcional.",
+        examples=["Estante A — Fila 1, Columna 3"],
+    )
+    max_weight_kg: Decimal | None = Field(
+        None,
+        gt=0,
+        description="Capacidad máxima del bin en kilogramos. Nulo = sin límite de peso.",
+        examples=[500],
+    )
+    max_volume_m3: Decimal | None = Field(
+        None,
+        gt=0,
+        description="Capacidad máxima del bin en metros cúbicos. Nulo = sin límite de volumen.",
+        examples=[2.5],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "code": "A-01-03",
+                "name": "Estante A — Fila 1, Columna 3",
+                "max_weight_kg": 500,
+                "max_volume_m3": 2.5,
+            }
+        }
+    }
 
 
 class BinUpdate(BaseModel):

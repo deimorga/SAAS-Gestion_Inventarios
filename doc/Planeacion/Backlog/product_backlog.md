@@ -79,14 +79,14 @@
 
 | # | ID | Módulo | Descripción | Prioridad | Tamaño | Sprint | Estado | Dependencias |
 |---|---|--------|-------------|-----------|--------|--------|--------|-------------|
-| 46 | DOC-002 | Docs | Enriquecer Pydantic schemas — `description` + `example` en todos los campos de request/response (inventory, catalog, auth, api_key, warehouse, common) | P0 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 46 | DOC-002 | Docs | Enriquecer Pydantic schemas — `description` + `example` en todos los campos de request/response (inventory, catalog, auth, api_key, warehouse, common) | P0 | S | Sprint 7 | ✅ Completado | DOC-001 |
 | 47 | DOC-003 | Docs | Guía de Integración Rápida — autenticación paso a paso, primera llamada, flujos end-to-end (POS, e-commerce, carga inicial) con curl y JSON | P0 | M | Sprint 7 | 🔲 Pendiente | DOC-002 |
-| 48 | DOC-004 | Docs | DT Catálogo de Productos — contratos completos con JSON request/response: crear producto, UOM, categorías jerárquicas, kits | P1 | M | Sprint 7 | 🔲 Pendiente | DOC-001 |
-| 49 | DOC-005 | Docs | DT Sedes y Almacenes — contratos con ejemplos: crear almacén, zonas, bins, bloqueos de ubicación | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
-| 50 | DOC-006 | Docs | DT Reservas y Canal — contratos con ejemplos: soft reservation, confirmar, TTL, allocation por canal | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
-| 51 | DOC-007 | Docs | DT Reportes y Valoración — contratos con ejemplos: kardex, balance snapshot, alertas, valuation | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
-| 52 | DOC-008 | Docs | DT Integración — webhook payloads por evento, firma HMAC paso a paso, formato bulk JSON, estados de BulkJob | P1 | M | Sprint 7 | 🔲 Pendiente | DOC-001 |
-| 53 | DOC-009 | Docs | Catálogo de Errores — tabla de `error_code`, HTTP status, descripción y acción sugerida para todos los errores posibles (mín. 40 códigos) | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 48 | DOC-004 | Docs | DT Catálogo de Productos — contratos completos con JSON request/response: crear producto, UOM, categorías jerárquicas, kits | P1 | M | Sprint 7 | ✅ Completado | DOC-001 |
+| 49 | DOC-005 | Docs | DT Sedes y Almacenes — contratos con ejemplos: crear almacén, zonas, bins, bloqueos de ubicación | P1 | S | Sprint 7 | ✅ Completado | DOC-001 |
+| 50 | DOC-006 | Docs | DT Reservas y Canal — contratos con ejemplos: soft reservation, confirmar, TTL, allocation por canal | P1 | S | Sprint 7 | ✅ Completado | DOC-001 |
+| 51 | DOC-007 | Docs | DT Reportes y Valoración — contratos con ejemplos: kardex, balance snapshot, alertas, valuation | P1 | S | Sprint 7 | ✅ Completado | DOC-001 |
+| 52 | DOC-008 | Docs | DT Integración — webhook payloads por evento, firma HMAC paso a paso, formato bulk JSON, estados de BulkJob | P1 | M | Sprint 7 | ✅ Completado | DOC-001 |
+| 53 | DOC-009 | Docs | Catálogo de Errores — tabla de `error_code`, HTTP status, descripción y acción sugerida para todos los errores posibles (mín. 40 códigos) | P1 | S | Sprint 7 | ✅ Completado | DOC-001 |
 | 54 | DOC-010 | Docs | Guía de Scopes — tabla scope → endpoints permitidos, ejemplos de API Key mínima por caso de uso | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-002 |
 | 55 | DOC-011 | Docs | Colección Postman/Insomnia — importable, variables de entorno, todos los módulos cubiertos con ejemplos pre-llenados | P2 | M | Sprint 7 | 🔲 Pendiente | DOC-002, DOC-003 |
 

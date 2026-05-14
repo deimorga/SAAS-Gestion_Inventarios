@@ -168,7 +168,7 @@ Cada sprint DEBE cumplir antes de avanzar al siguiente:
 
 | Sprint | Período | Objetivo | DOCs Incluidos | Estado |
 |--------|---------|----------|----------------|--------|
-| Sprint 7 | 2026-05-14 → 2026-05-21 | Eliminar fricción de integración para desarrolladores externos | DOC-002 a DOC-011 | 🔲 Planificado |
+| Sprint 7 | 2026-05-14 → 2026-05-14 | Eliminar fricción de integración para desarrolladores externos | DOC-002 a DOC-011 | ✅ Completado — ruff 0, 37 requests Postman, 46 error codes, 4 docs integración, schemas 100% enriquecidos |
 
 **Entregables Sprint 7:**
 - Campos Pydantic enriquecidos: `description` ≥ 95% y `example` ≥ 80% en schemas principales

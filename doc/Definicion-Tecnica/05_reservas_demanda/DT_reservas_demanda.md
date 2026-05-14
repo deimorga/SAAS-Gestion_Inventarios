@@ -161,3 +161,60 @@ class ReservationConfirm(BaseModel):
     actual_quantity_to_issue: Decimal = Field(..., gt=0)
     issue_reference: str
 ```
+
+---
+
+## 5. Channel Allocation — Cuotas por Canal de Venta (RF-028)
+
+Permite reservar una cantidad fija de stock para un canal específico (WEB, POS, B2B, etc.), garantizando disponibilidad exclusiva por canal.
+
+| Método | Endpoint | Descripción | Scope |
+|--------|----------|-------------|-------|
+| `POST` | `/v1/channel-allocations` | Crear cuota para un canal | `MANAGE_RESERVATIONS` |
+| `GET` | `/v1/channel-allocations` | Listar cuotas activas | `MANAGE_RESERVATIONS` |
+| `PATCH` | `/v1/channel-allocations/{id}` | Modificar cantidad o estado | `MANAGE_RESERVATIONS` |
+| `DELETE` | `/v1/channel-allocations/{id}` | Eliminar cuota | `MANAGE_RESERVATIONS` |
+
+**Canales válidos:** `WEB`, `POS`, `B2B`, `MOBILE`, `MARKETPLACE`, `WHOLESALE`, `INTERNAL`
+
+### 5.1 POST `/v1/channel-allocations` — Crear cuota
+
+#### Request
+
+```json
+{
+  "product_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "zone_id": "c2d3e4f5-a6b7-8901-cdef-012345678902",
+  "channel": "WEB",
+  "allocated_qty": 20,
+  "notes": "Stock exclusivo tienda online — temporada alta"
+}
+```
+
+| Campo | Tipo | Requerido | Validación |
+|-------|------|:---------:|------------|
+| `product_id` | `uuid` | ✅ | Debe existir en el catálogo |
+| `zone_id` | `uuid` | ✅ | Zona donde se aplica la cuota |
+| `channel` | `string` | ✅ | Uno de los canales válidos |
+| `allocated_qty` | `decimal` | ✅ | > 0 |
+| `notes` | `string` | ❌ | Texto libre, referencial |
+
+#### Response — `201 Created`
+
+```json
+{
+  "id": "alloc-uuid-001",
+  "tenant_id": "tenant-uuid",
+  "product_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "zone_id": "c2d3e4f5-a6b7-8901-cdef-012345678902",
+  "channel": "WEB",
+  "allocated_qty": 20,
+  "notes": "Stock exclusivo tienda online — temporada alta",
+  "is_active": true,
+  "created_at": "2026-05-14T10:00:00Z",
+  "updated_at": "2026-05-14T10:00:00Z"
+}
+```
+
+> [!NOTE]
+> Solo puede existir una cuota por combinación `producto + zona + canal`. Intentar crear una duplicada devuelve `409 Conflict`.

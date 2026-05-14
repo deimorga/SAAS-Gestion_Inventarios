@@ -200,3 +200,201 @@ class JobStatusResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None
 ```
+
+---
+
+## 5. Bulk Engine — Endpoints Reales (Implementado)
+
+> Los endpoints de importación CSV no están activos en el MVP. La carga masiva se hace vía JSON síncrono con `/v1/bulk/*`.
+
+### 5.1 POST `/v1/bulk/receipts` — Entradas masivas
+
+Procesa hasta **500 entradas de mercancía** en un solo request. Cada ítem es atómico e independiente — un fallo parcial no bloquea el lote.
+
+#### Request
+
+```json
+{
+  "items": [
+    {
+      "reference_type": "PURCHASE_ORDER",
+      "reference_id": "OC-2026-00145",
+      "reason_code": "COMPRA",
+      "warehouse_id": "b1c2d3e4-f5a6-7890-bcde-f01234567891",
+      "zone_id": "c2d3e4f5-a6b7-8901-cdef-012345678902",
+      "items": [
+        {
+          "product_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "quantity": 10,
+          "unit_cost": 15500.00
+        }
+      ]
+    },
+    {
+      "reference_type": "PURCHASE_ORDER",
+      "reference_id": "OC-2026-00146",
+      "reason_code": "COMPRA",
+      "warehouse_id": "b1c2d3e4-f5a6-7890-bcde-f01234567891",
+      "zone_id": "c2d3e4f5-a6b7-8901-cdef-012345678902",
+      "items": [
+        {
+          "product_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          "quantity": 5,
+          "unit_cost": 8900.00
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Response — `200 OK`
+
+```json
+{
+  "total": 2,
+  "succeeded": 2,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "status": "ok",
+      "transaction_id": "txn-uuid-001",
+      "detail": null
+    },
+    {
+      "index": 1,
+      "status": "ok",
+      "transaction_id": "txn-uuid-002",
+      "detail": null
+    }
+  ]
+}
+```
+
+#### Response con fallo parcial
+
+```json
+{
+  "total": 2,
+  "succeeded": 1,
+  "failed": 1,
+  "results": [
+    { "index": 0, "status": "ok", "transaction_id": "txn-uuid-001", "detail": null },
+    { "index": 1, "status": "error", "transaction_id": null, "detail": "Producto a1b2... no encontrado o inactivo" }
+  ]
+}
+```
+
+Los endpoints equivalentes son:
+- `POST /v1/bulk/issues` — salidas masivas (misma estructura, items son IssueRequest)
+- `POST /v1/bulk/transfers` — transferencias masivas (items son TransferRequest)
+
+---
+
+## 6. Webhooks — Corrección de Implementación
+
+### 6.1 Eventos válidos
+
+| Evento | Cuándo se dispara |
+|--------|-------------------|
+| `transaction.receipt` | Se registra una entrada de mercancía |
+| `transaction.issue` | Se registra una salida de mercancía |
+| `transaction.transfer` | Se registra una transferencia entre almacenes |
+| `transaction.adjustment` | Se registra un ajuste de inventario |
+| `reservation.created` | Se crea una reserva |
+| `reservation.confirmed` | Se confirma (convierte en Issue) una reserva |
+| `reservation.cancelled` | Se cancela una reserva |
+| `reservation.expired` | Celery expira una reserva por TTL |
+| `stock.low` | El available_qty cae por debajo del reorder_point |
+
+### 6.2 Firma HMAC — Paso a paso
+
+El servidor envía `X-Webhook-Signature: sha256=<hex>` y `X-Webhook-Event: <event_type>`.
+
+**Algoritmo de verificación en el receptor:**
+
+```python
+import hmac, hashlib
+
+def verify_signature(payload_bytes: bytes, secret: str, header: str) -> bool:
+    expected = "sha256=" + hmac.new(
+        secret.encode(),
+        payload_bytes,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, header)
+
+# En tu endpoint Flask/FastAPI:
+raw_body = await request.body()
+sig_header = request.headers.get("X-Webhook-Signature", "")
+if not verify_signature(raw_body, MY_WEBHOOK_SECRET, sig_header):
+    return Response(status_code=401)
+```
+
+**Verificación equivalente en Node.js:**
+
+```javascript
+const crypto = require('crypto');
+const sig = 'sha256=' + crypto
+  .createHmac('sha256', MY_WEBHOOK_SECRET)
+  .update(rawBody)
+  .digest('hex');
+const isValid = crypto.timingSafeEqual(
+  Buffer.from(sig), Buffer.from(incomingSignature)
+);
+```
+
+### 6.3 Payload estándar por evento (corregido)
+
+**`transaction.receipt` / `transaction.issue`:**
+
+```json
+{
+  "event_id": "evt-uuid-001",
+  "event_type": "transaction.receipt",
+  "timestamp": "2026-05-14T15:00:00Z",
+  "tenant_id": "tenant-uuid",
+  "data": {
+    "transaction_id": "txn-uuid-001",
+    "reference_type": "PURCHASE_ORDER",
+    "reference_id": "OC-2026-00145",
+    "warehouse_id": "wh-uuid-1",
+    "items_processed": 1
+  }
+}
+```
+
+**`stock.low`:**
+
+```json
+{
+  "event_id": "evt-uuid-002",
+  "event_type": "stock.low",
+  "timestamp": "2026-05-14T15:05:00Z",
+  "tenant_id": "tenant-uuid",
+  "data": {
+    "product_id": "prod-uuid-1",
+    "sku": "FILTRO-ACEITE-001",
+    "warehouse_id": "wh-uuid-1",
+    "available_qty": 2.0,
+    "reorder_point": 5.0
+  }
+}
+```
+
+**`reservation.expired`:**
+
+```json
+{
+  "event_id": "evt-uuid-003",
+  "event_type": "reservation.expired",
+  "timestamp": "2026-05-14T16:00:00Z",
+  "tenant_id": "tenant-uuid",
+  "data": {
+    "reservation_id": "res-uuid-1",
+    "reference_type": "ECOMMERCE_CART",
+    "reference_id": "CART-12345"
+  }
+}
+```

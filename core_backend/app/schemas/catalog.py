@@ -8,9 +8,33 @@ from pydantic import BaseModel, Field
 # ── Category ──────────────────────────────────────────────────────────────
 
 class CategoryCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    parent_id: UUID | None = None
-    sort_order: int = 0
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Nombre de la categoría. Debe ser único entre los hijos del mismo padre.",
+        examples=["Repuestos Mecánicos"],
+    )
+    parent_id: UUID | None = Field(
+        None,
+        description="UUID de la categoría padre para crear jerarquías. Nulo = categoría raíz.",
+        examples=["550e8400-e29b-41d4-a716-446655440001"],
+    )
+    sort_order: int = Field(
+        0,
+        description="Orden de presentación dentro del mismo nivel (menor número aparece primero).",
+        examples=[10],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "name": "Filtros",
+                "parent_id": "550e8400-e29b-41d4-a716-446655440001",
+                "sort_order": 10,
+            }
+        }
+    }
 
 
 class CategoryUpdate(BaseModel):
@@ -48,17 +72,87 @@ class CategoryTreeNode(CategoryResponse):
 # ── Product ───────────────────────────────────────────────────────────────
 
 class ProductCreate(BaseModel):
-    sku: str = Field(..., min_length=1, max_length=50, pattern=r"^[A-Za-z0-9\-_]+$")
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str | None = Field(None, max_length=2000)
-    category_id: UUID | None = None
-    base_uom: str = Field(..., max_length=20)
-    reorder_point: Decimal = Field(default=Decimal("0"), ge=0)
-    track_lots: bool = False
-    track_serials: bool = False
-    track_expiry: bool = False
-    low_stock_alert_enabled: bool = True
-    metadata: dict | None = None
+    sku: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern=r"^[A-Za-z0-9\-_]+$",
+        description="Código único del producto (SKU). Solo letras, dígitos, guiones y guiones bajos. Inmutable tras la creación.",
+        examples=["FILTRO-ACEITE-001"],
+    )
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Nombre descriptivo del producto.",
+        examples=["Filtro de aceite motor 2.0L"],
+    )
+    description: str | None = Field(
+        None,
+        max_length=2000,
+        description="Descripción detallada del producto. Opcional.",
+        examples=["Compatible con motores Chevrolet 2.0L y 2.4L — modelos 2015–2024."],
+    )
+    category_id: UUID | None = Field(
+        None,
+        description="UUID de la categoría a la que pertenece el producto. Opcional.",
+        examples=["550e8400-e29b-41d4-a716-446655440010"],
+    )
+    base_uom: str = Field(
+        ...,
+        max_length=20,
+        description="Unidad de medida base del producto. Valores comunes: UND, KG, LT, PAR, MTS, CAJA.",
+        examples=["UND"],
+    )
+    reorder_point: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        description="Stock mínimo antes de disparar alerta de reabastecimiento. 0 = sin alerta.",
+        examples=[5],
+    )
+    track_lots: bool = Field(
+        False,
+        description="Si true, cada movimiento debe especificar número de lote (lot_number). Requerido para trazabilidad por lote.",
+        examples=[False],
+    )
+    track_serials: bool = Field(
+        False,
+        description="Si true, cada unidad debe registrar un serial único. Implica track_lots=true.",
+        examples=[False],
+    )
+    track_expiry: bool = Field(
+        False,
+        description="Si true, se requiere fecha de vencimiento (expiry_date) en cada movimiento. Recomendado para productos perecederos.",
+        examples=[False],
+    )
+    low_stock_alert_enabled: bool = Field(
+        True,
+        description="Habilitar alertas automáticas cuando el stock cae por debajo de reorder_point.",
+        examples=[True],
+    )
+    metadata: dict | None = Field(
+        None,
+        description="Metadatos adicionales en formato JSON libre (marca, referencia OEM, proveedor, etc.).",
+        examples=[{"marca": "Bosch", "referencia_oem": "1457429618"}],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "sku": "FILTRO-ACEITE-001",
+                "name": "Filtro de aceite motor 2.0L",
+                "description": "Compatible con motores Chevrolet 2.0L y 2.4L — modelos 2015–2024.",
+                "category_id": "550e8400-e29b-41d4-a716-446655440010",
+                "base_uom": "UND",
+                "reorder_point": 5,
+                "track_lots": False,
+                "track_serials": False,
+                "track_expiry": False,
+                "low_stock_alert_enabled": True,
+                "metadata": {"marca": "Bosch", "referencia_oem": "1457429618"},
+            }
+        }
+    }
 
 
 class ProductUpdate(BaseModel):
@@ -114,10 +208,39 @@ class ProductListItem(BaseModel):
 # ── UOM ───────────────────────────────────────────────────────────────────
 
 class ProductUomCreate(BaseModel):
-    uom_code: str = Field(..., max_length=20)
-    conversion_factor: Decimal = Field(..., gt=0)
-    is_purchase_uom: bool = False
-    is_sale_uom: bool = False
+    uom_code: str = Field(
+        ...,
+        max_length=20,
+        description="Código de la unidad de medida alternativa (ej: CAJA, DOCENA, PAR). Debe existir en el catálogo de UOMs del tenant.",
+        examples=["CAJA"],
+    )
+    conversion_factor: Decimal = Field(
+        ...,
+        gt=0,
+        description="Factor de conversión respecto a la unidad base del producto. Ej: si base=UND y uom_code=CAJA con factor=12, 1 CAJA = 12 UND.",
+        examples=[12],
+    )
+    is_purchase_uom: bool = Field(
+        False,
+        description="Marcar como unidad preferida para órdenes de compra (solo referencial).",
+        examples=[True],
+    )
+    is_sale_uom: bool = Field(
+        False,
+        description="Marcar como unidad preferida para ventas (solo referencial).",
+        examples=[False],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "uom_code": "CAJA",
+                "conversion_factor": 12,
+                "is_purchase_uom": True,
+                "is_sale_uom": False,
+            }
+        }
+    }
 
 
 class ProductUomResponse(BaseModel):
