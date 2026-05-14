@@ -75,6 +75,21 @@
 | 44 | RF-043 | Admin | Sistema de Notificaciones Transaccionales por Email (Resend) | P1 | M | Sprint 6 | ✅ Completado | RF-037..RF-041 |
 | 45 | RF-044 | Admin | Admin — Gestión de API Keys entre Tenants (super_admin) | P1 | S | Sprint 6 | ✅ Completado | RF-036, RF-041 |
 
+### Fase 5 — Documentación de Integración (Sprint 7)
+
+| # | ID | Módulo | Descripción | Prioridad | Tamaño | Sprint | Estado | Dependencias |
+|---|---|--------|-------------|-----------|--------|--------|--------|-------------|
+| 46 | DOC-002 | Docs | Enriquecer Pydantic schemas — `description` + `example` en todos los campos de request/response (inventory, catalog, auth, api_key, warehouse, common) | P0 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 47 | DOC-003 | Docs | Guía de Integración Rápida — autenticación paso a paso, primera llamada, flujos end-to-end (POS, e-commerce, carga inicial) con curl y JSON | P0 | M | Sprint 7 | 🔲 Pendiente | DOC-002 |
+| 48 | DOC-004 | Docs | DT Catálogo de Productos — contratos completos con JSON request/response: crear producto, UOM, categorías jerárquicas, kits | P1 | M | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 49 | DOC-005 | Docs | DT Sedes y Almacenes — contratos con ejemplos: crear almacén, zonas, bins, bloqueos de ubicación | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 50 | DOC-006 | Docs | DT Reservas y Canal — contratos con ejemplos: soft reservation, confirmar, TTL, allocation por canal | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 51 | DOC-007 | Docs | DT Reportes y Valoración — contratos con ejemplos: kardex, balance snapshot, alertas, valuation | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 52 | DOC-008 | Docs | DT Integración — webhook payloads por evento, firma HMAC paso a paso, formato bulk JSON, estados de BulkJob | P1 | M | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 53 | DOC-009 | Docs | Catálogo de Errores — tabla de `error_code`, HTTP status, descripción y acción sugerida para todos los errores posibles (mín. 40 códigos) | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-001 |
+| 54 | DOC-010 | Docs | Guía de Scopes — tabla scope → endpoints permitidos, ejemplos de API Key mínima por caso de uso | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-002 |
+| 55 | DOC-011 | Docs | Colección Postman/Insomnia — importable, variables de entorno, todos los módulos cubiertos con ejemplos pre-llenados | P2 | M | Sprint 7 | 🔲 Pendiente | DOC-002, DOC-003 |
+
 ---
 
 ## Resumen de Velocidad Estimada
@@ -87,3 +102,4 @@
 | Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ✅ Completado (154 tests, 91% cov) |
 | Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (10 tareas) | Trazabilidad Avanzada | ✅ Completado (208 tests, 92% cov) |
 | Sprint 6 | RF-036..RF-044 | XL (9 RF, 37 tareas) | Admin Multi-tenant + Onboarding + Email | ✅ Completado |
+| Sprint 7 | DOC-002..DOC-011 | L (10 items, 18 tareas) | Documentación de Integración | 🔲 Planificado |

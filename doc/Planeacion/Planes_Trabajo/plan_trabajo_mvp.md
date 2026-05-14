@@ -157,3 +157,27 @@ Cada sprint DEBE cumplir antes de avanzar al siguiente:
 | Workers de producción | Configuración real de Celery + Redis para auto-expiration y bulk |
 | Monitoreo | Logs estructurados, métricas Prometheus/Grafana, alertas |
 | Portal multi-tenant | Registro self-service, planes de suscripción, billing |
+
+---
+
+## 7. Fase 5 — Documentación de Integración
+
+> **Motivación:** Auditoría del 2026-05-14 reveló que los ~92 endpoints tienen 100% de summary/description/responses documentados, pero el 48% de los campos Pydantic carecen de `description` y el 100% carecen de `example`. Adicionalmente, no existen guía de inicio rápido, catálogo de errores, guía de scopes ni colección Postman. Un integrador externo sabe *qué* hace la API pero no *cómo* usarla.
+
+### Fase 5: Documentación de Integración (Sprint 7)
+
+| Sprint | Período | Objetivo | DOCs Incluidos | Estado |
+|--------|---------|----------|----------------|--------|
+| Sprint 7 | 2026-05-14 → 2026-05-21 | Eliminar fricción de integración para desarrolladores externos | DOC-002 a DOC-011 | 🔲 Planificado |
+
+**Entregables Sprint 7:**
+- Campos Pydantic enriquecidos: `description` ≥ 95% y `example` ≥ 80% en schemas principales
+- Enums documentados: ApiKeyScope, MovementType, ZoneType con descripción por valor
+- `doc/integracion/guia_rapida.md` — autenticación + flujos E2E (venta, entrada, consulta de saldo)
+- `doc/integracion/error_catalog.md` — ≥ 40 error codes con HTTP status y acción sugerida
+- `doc/integracion/api_scopes.md` — tabla scope → endpoints + API Key mínima por caso de uso
+- 5 DTs nuevos: Catálogo, Sedes, Reservas, Reportes, Integración — con contratos JSON completos
+- `doc/integracion/postman_collection.json` — colección importable en Postman/Insomnia
+- Sin regresión: ruff 0, mypy 0, pytest ≥ 93% cobertura
+
+**Criterio de éxito:** El equipo de SAAS-Gestion_Talleres puede integrar el primer endpoint (registrar entrada de mercancía) siguiendo solo la documentación, sin asistencia directa del equipo MicroNuba.
