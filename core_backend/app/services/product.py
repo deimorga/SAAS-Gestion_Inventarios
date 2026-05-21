@@ -44,6 +44,7 @@ async def create_product(body: ProductCreate, db: AsyncSession, tenant_id: str) 
         name=body.name,
         description=body.description,
         base_uom=body.base_uom,
+        sale_price=body.sale_price,
         current_cpp=Decimal("0"),
         reorder_point=body.reorder_point,
         track_serials=body.track_serials,
@@ -113,8 +114,8 @@ async def list_products(
         ProductListItem(
             id=p.id, sku=p.sku, name=p.name,
             category=CategorySummary(id=categories[p.category_id].id, name=categories[p.category_id].name) if p.category_id and p.category_id in categories else None,
-            base_uom=p.base_uom, current_cpp=p.current_cpp, reorder_point=p.reorder_point,
-            is_active=p.is_active, is_kit=p.is_kit, created_at=p.created_at,
+            base_uom=p.base_uom, sale_price=p.sale_price, current_cpp=p.current_cpp,
+            reorder_point=p.reorder_point, is_active=p.is_active, is_kit=p.is_kit, created_at=p.created_at,
         )
         for p in products
     ]
@@ -187,6 +188,7 @@ def _to_response(product: Product, category: Category | None) -> ProductResponse
         description=product.description,
         category=CategorySummary(id=category.id, name=category.name) if category else None,
         base_uom=product.base_uom,
+        sale_price=product.sale_price,
         current_cpp=product.current_cpp,
         reorder_point=product.reorder_point,
         track_lots=product.track_lots,

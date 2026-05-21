@@ -19,6 +19,7 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     base_uom: Mapped[str] = mapped_column(String(20), nullable=False)
+    sale_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     current_cpp: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
     reorder_point: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
     track_serials: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
