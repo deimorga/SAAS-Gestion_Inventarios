@@ -682,26 +682,6 @@ async def page_products(tenant_id: str) -> None:
                     {"name": "sale_price", "label": "Precio", "field": "sale_price_str", "align": "right"},
                     {"name": "actions", "label": "", "field": "id", "align": "center"},
                 ]
-                rows = [
-                    {
-                        **p,
-                        "sale_price_str": f"${float(p['sale_price']):,.0f}" if p.get("sale_price") else "—",
-                    }
-                    for p in items
-                ]
-
-                tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-sm")
-                tbl.add_slot(
-                    "body-cell-actions",
-                    """
-                    <q-td :props="props">
-                        <q-btn flat dense icon="edit" color="primary" size="sm"
-                               @click="$parent.$emit('edit', props.row)" class="mr-1"/>
-                        <q-btn flat dense icon="delete" color="negative" size="sm"
-                               @click="$parent.$emit('delete', props.row)" />
-                    </q-td>
-                    """,
-                )
 
                 def on_edit(e: Any) -> None:
                     row = e.args
@@ -720,8 +700,38 @@ async def page_products(tenant_id: str) -> None:
                     deleting.update({"id": e.args["id"]})
                     confirm_delete.open()
 
-                tbl.on("edit", on_edit)
-                tbl.on("delete", on_delete)
+                grouped_items = {}
+                for p in items:
+                    cat = p.get("category")
+                    cat_name = cat.get("name") if cat else "Sin Categoría"
+                    grouped_items.setdefault(cat_name, []).append(p)
+                
+                sorted_cats = sorted(grouped_items.keys(), key=lambda x: (x == "Sin Categoría", x))
+
+                for cat_name in sorted_cats:
+                    prods = grouped_items[cat_name]
+                    with ui.expansion(f"{cat_name} ({len(prods)})", icon="category").classes("w-full bg-white shadow-sm mb-2").props("default-opened"):
+                        rows = [
+                            {
+                                **p,
+                                "sale_price_str": f"${float(p['sale_price']):,.0f}" if p.get("sale_price") else "—",
+                            }
+                            for p in prods
+                        ]
+                        tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-none border-t")
+                        tbl.add_slot(
+                            "body-cell-actions",
+                            """
+                            <q-td :props="props">
+                                <q-btn flat dense icon="edit" color="primary" size="sm"
+                                       @click="$parent.$emit('edit', props.row)" class="mr-1"/>
+                                <q-btn flat dense icon="delete" color="negative" size="sm"
+                                       @click="$parent.$emit('delete', props.row)" />
+                            </q-td>
+                            """,
+                        )
+                        tbl.on("edit", on_edit)
+                        tbl.on("delete", on_delete)
 
             except Exception as ex:
                 ui.notify(f"Error cargando productos: {ex}", type="negative")
@@ -904,32 +914,6 @@ async def page_stock(tenant_id: str) -> None:
                     {"name": "available", "label": "Disponible", "field": "available_qty", "align": "right"},
                     {"name": "actions", "label": "", "field": "id", "align": "center"},
                 ]
-                rows = [
-                    {
-                        **s,
-                        "product_name": prod_map.get(str(s["product_id"]).lower(), str(s["product_id"])[:8]),
-                        "warehouse_name": wh_map.get(str(s["warehouse_id"]).lower(), "—"),
-                        "zone_name": all_zones.get(str(s["zone_id"]).lower(), "—"),
-                        "physical_qty": float(s["physical_qty"]),
-                        "reserved_qty": float(s["reserved_qty"]),
-                        "available_qty": float(s["available_qty"]),
-                    }
-                    for s in items
-                ]
-                tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-sm")
-                tbl.add_slot("body-cell-available", """
-                    <q-td :props="props">
-                        <q-badge :color="props.value > 0 ? 'positive' : 'grey'" :label="props.value" />
-                    </q-td>
-                """)
-                tbl.add_slot("body-cell-actions", """
-                    <q-td :props="props">
-                        <q-btn flat dense icon="edit" color="primary" size="sm"
-                               @click="$parent.$emit('edit_stock', props.row)" class="mr-1" />
-                        <q-btn flat dense icon="delete" color="negative" size="sm"
-                               @click="$parent.$emit('delete_stock', props.row)" />
-                    </q-td>
-                """)
 
                 # Diálogo simplificado de edición por fila
                 edit_stock_row: dict = {}
@@ -1008,8 +992,46 @@ async def page_stock(tenant_id: str) -> None:
                     delete_stock_row.update(e.args)
                     delete_stock_dialog.open()
 
-                tbl.on("edit_stock", on_edit_stock)
-                tbl.on("delete_stock", on_delete_stock)
+                # Group by category
+                grouped_items = {}
+                for s in items:
+                    prod_id = str(s["product_id"]).lower()
+                    prod_info = next((p for p in products_cache if str(p["id"]).lower() == prod_id), {})
+                    cat = prod_info.get("category")
+                    cat_name = cat.get("name") if cat else "Sin Categoría"
+                    
+                    row_dict = {
+                        **s,
+                        "product_name": prod_map.get(prod_id, prod_id[:8]),
+                        "warehouse_name": wh_map.get(str(s["warehouse_id"]).lower(), "—"),
+                        "zone_name": all_zones.get(str(s["zone_id"]).lower(), "—"),
+                        "physical_qty": float(s["physical_qty"]),
+                        "reserved_qty": float(s["reserved_qty"]),
+                        "available_qty": float(s["available_qty"]),
+                    }
+                    grouped_items.setdefault(cat_name, []).append(row_dict)
+
+                sorted_cats = sorted(grouped_items.keys(), key=lambda x: (x == "Sin Categoría", x))
+
+                for cat_name in sorted_cats:
+                    rows = grouped_items[cat_name]
+                    with ui.expansion(f"{cat_name} ({len(rows)})", icon="category").classes("w-full bg-white shadow-sm mb-2").props("default-opened"):
+                        tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-none border-t")
+                        tbl.add_slot("body-cell-available", """
+                            <q-td :props="props">
+                                <q-badge :color="props.value > 0 ? 'positive' : 'grey'" :label="props.value" />
+                            </q-td>
+                        """)
+                        tbl.add_slot("body-cell-actions", """
+                            <q-td :props="props">
+                                <q-btn flat dense icon="edit" color="primary" size="sm"
+                                       @click="$parent.$emit('edit_stock', props.row)" class="mr-1" />
+                                <q-btn flat dense icon="delete" color="negative" size="sm"
+                                       @click="$parent.$emit('delete_stock', props.row)" />
+                            </q-td>
+                        """)
+                        tbl.on("edit_stock", on_edit_stock)
+                        tbl.on("delete_stock", on_delete_stock)
             except Exception as ex:
                 ui.notify(f"Error cargando stock: {ex}", type="negative")
 

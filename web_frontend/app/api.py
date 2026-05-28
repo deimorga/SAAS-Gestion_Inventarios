@@ -1,7 +1,9 @@
 import os
 from typing import Any
 
+# pyrefly: ignore [missing-import]
 import httpx
+# pyrefly: ignore [missing-import]
 from nicegui import app, ui
 
 BASE_URL = os.getenv("API_BASE_URL", "http://api:8000")
@@ -168,6 +170,13 @@ async def update_product(token: str, tenant_id: str, product_id: str, payload: d
 
 async def delete_product(token: str, tenant_id: str, product_id: str) -> None:
     await _authed_request("DELETE", f"/admin/tenants/{tenant_id}/products/{product_id}", token)
+
+
+# ── Categories ──────────────────────────────────────────────────────────────
+
+async def list_categories(token: str, tenant_id: str) -> list[dict[str, Any]]:
+    r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/categories", token)
+    return r.json()
 
 
 # ── Stock ────────────────────────────────────────────────────────────────────

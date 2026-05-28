@@ -7,6 +7,7 @@ from app.core.database import AsyncSessionLocal
 from app.schemas.catalog import ProductCreate, ProductResponse, ProductUpdate
 from app.schemas.common import PaginatedResponse
 from app.services import product as product_service
+from app.services import category as category_service
 from sqlalchemy import text
 
 router = APIRouter(tags=["Admin — Productos"])
@@ -111,3 +112,23 @@ async def admin_delete_product(
         await product_service.deactivate_product(
             product_id=product_id, db=session, tenant_id=tenant_id
         )
+
+
+@router.get(
+    "/tenants/{tenant_id}/categories",
+    response_model=list,
+    summary="Listar categorías de un tenant",
+)
+async def admin_list_categories(
+    tenant_id: str,
+    _auth: AuthContext = Depends(require_super_admin),
+):
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_tenant', :tid, true)"),
+            {"tid": tenant_id},
+        )
+        return await category_service.list_categories(
+            db=session, tenant_id=tenant_id, flat=True, include_counts=True,
+        )
+
