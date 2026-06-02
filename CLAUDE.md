@@ -43,7 +43,7 @@ core_backend/                   # FastAPI backend
 │       ├── security.py       # JWT, API key, password hashing
 │       ├── redis_client.py   # Redis connection pool
 │       └── exceptions.py     # Custom exception handlers
-├── alembic/                  # Database migrations (12+ revisions)
+├── alembic/                  # Database migrations (13 revisions)
 ├── tests/                    # 23+ test modules (RLS isolation, auth, etc.)
 ├── scripts/                  # Utilities (export_openapi.py)
 ├── requirements.txt          # Python dependencies
@@ -235,6 +235,13 @@ endpoint(products.py)
 - HTTP client (`app.api`) abstracts backend calls
 - Pages: login, tenant list, API keys, audit logs, webhooks
 
+**Pages implemented:**
+- `/login` — Super admin login
+- `/tenants` — List with view/suspend buttons per row
+- `/tenants/{id}` — Detail with Acciones: Suspender, Gestionar Productos, Gestionar Stock
+- `/tenants/{id}/products` — CRUD productos (SKU, nombre, precio venta, UOM, descripción)
+- `/tenants/{id}/stock` — Ver saldos, entrada de stock, ajuste por fila, eliminar (ajuste a 0)
+
 **Key Files**:
 - `web_frontend/app/main.py` — All UI pages
 - `web_frontend/app/api.py` — HTTP client wrapper
@@ -286,6 +293,7 @@ endpoint(products.py)
 10. **010** — Bins & location locks
 11. **011** — Channel allocations
 12. **012** — Admin bootstrap & RLS policies
+13. **013** — `sale_price` (Numeric 18,4, nullable) en tabla `products`
 
 **Migration Commands**:
 ```bash
@@ -506,6 +514,38 @@ cd web_frontend
 pip install -r requirements.txt
 python -m app.main
 ```
+
+## Cambios Recientes (Sprint 8 — Gestión desde Portal Admin)
+
+### Nuevos campos
+- `Product.sale_price` — Precio de venta opcional (Numeric 18,4, nullable). Migración 013.
+
+### Nuevos endpoints admin (`app/api/admin/`)
+Todos requieren JWT `super_admin`. Usan sesión con RLS del tenant específico (no `__super_admin__`).
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /admin/tenants/{id}/products` | Listar productos del tenant |
+| `POST /admin/tenants/{id}/products` | Crear producto |
+| `PATCH /admin/tenants/{id}/products/{pid}` | Actualizar producto |
+| `DELETE /admin/tenants/{id}/products/{pid}` | Desactivar producto |
+| `GET /admin/tenants/{id}/categories` | Listar categorías |
+| `GET /admin/tenants/{id}/stock` | Saldos de stock |
+| `POST /admin/tenants/{id}/stock/receipts` | Entrada de mercancía |
+| `POST /admin/tenants/{id}/stock/adjustments` | Ajuste de stock (campo: `new_qty`) |
+| `GET /admin/tenants/{id}/warehouses` | Listar almacenes |
+| `GET /admin/tenants/{id}/warehouses/{wid}/zones` | Listar zonas |
+
+**Archivos:** `app/api/admin/endpoints/admin_products.py`, `admin_stock.py`
+
+### Fixes aplicados
+- `LoginRequest` — removido `min_length=8` del campo `password` (solo aplica al registro)
+- `AdjustmentItem.new_qty` — el campo correcto para ajustes es `new_qty`, no `actual_qty`
+- Super admin: contraseña se puede resetear con `passlib.context.CryptContext` desde el contenedor API
+
+### Git
+- Rama `staging` creada y subida a GitHub — idéntica a `main`
+- Flujo: desarrollar en `staging`, merge a `main` para producción
 
 ## Glossary
 

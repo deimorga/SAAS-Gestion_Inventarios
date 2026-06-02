@@ -27,7 +27,6 @@ class LoginRequest(BaseModel):
     )
     password: str = Field(
         ...,
-        min_length=8,
         description="Contraseña del usuario.",
         examples=["Mi$Passw0rd"],
     )

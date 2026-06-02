@@ -175,10 +175,27 @@ async def get_auth_db(
 
 # ── Guards de rol ──────────────────────────────────────────────────────────
 
+# Qué roles efectivos otorga cada scope de API Key
+_API_KEY_SCOPE_ROLES: dict[str, set[str]] = {
+    "ADMIN":               {"super_admin", "tenant_admin", "inventory_manager", "viewer"},
+    "WRITE_CATALOG":       {"tenant_admin", "inventory_manager"},
+    "WRITE_INVENTORY":     {"tenant_admin", "inventory_manager"},
+    "MANAGE_WAREHOUSES":   {"tenant_admin", "inventory_manager"},
+    "MANAGE_RESERVATIONS": {"tenant_admin", "inventory_manager"},
+    "READ_CATALOG":        {"inventory_manager", "viewer"},
+    "READ_INVENTORY":      {"inventory_manager", "viewer"},
+}
+
+
 def require_roles(*roles: str):
     async def _check(auth: AuthContext = Depends(get_current_auth)) -> AuthContext:
-        if auth.auth_type == "api_key" and "ADMIN" in auth.scopes:
-            return auth
+        if auth.auth_type == "api_key":
+            effective_roles: set[str] = set()
+            for scope in auth.scopes:
+                effective_roles.update(_API_KEY_SCOPE_ROLES.get(scope, set()))
+            if effective_roles & set(roles):
+                return auth
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         if auth.role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         return auth

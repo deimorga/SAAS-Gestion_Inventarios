@@ -144,6 +144,11 @@ async def get_tenant_keys(token: str, tenant_id: str) -> dict[str, Any]:
     return r.json()
 
 
+async def create_tenant_key(token: str, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    r = await _authed_request("POST", f"/admin/tenants/{tenant_id}/api-keys", token, json=payload)
+    return r.json()
+
+
 async def revoke_key(token: str, tenant_id: str, key_id: str) -> None:
     await _authed_request("DELETE", f"/admin/tenants/{tenant_id}/api-keys/{key_id}", token)
 

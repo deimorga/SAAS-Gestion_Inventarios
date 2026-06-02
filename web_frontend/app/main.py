@@ -29,12 +29,10 @@ def _info_row(label: str, value: str, copyable: bool = False) -> None:
         ui.label(label).classes("text-xs font-semibold text-gray-500 uppercase w-36 shrink-0")
         ui.label(value).classes("text-sm text-gray-800 break-all flex-1")
         if copyable:
-            ui.button(
-                icon="content_copy",
-                on_click=lambda v=value: ui.run_javascript(
-                    f"navigator.clipboard.writeText({v!r})"
-                ),
-            ).props("flat dense size=xs").tooltip("Copiar")
+            async def _copy(v: str = value) -> None:
+                await ui.run_javascript(f"navigator.clipboard.writeText({v!r})")
+                ui.notify("Copiado al portapapeles", type="positive", position="top", timeout=1500)
+            ui.button(icon="content_copy", on_click=_copy).props("flat dense size=xs").tooltip("Copiar")
 
 
 def _tier_badge(tier: str) -> None:
@@ -402,7 +400,8 @@ async def page_tenant_detail(tenant_id: str) -> None:
 
     try:
         tenant = await api.get_tenant(_token(), tenant_id)
-        keys_data = await api.get_tenant_keys(_token(), tenant_id)
+        all_keys = (await api.get_tenant_keys(_token(), tenant_id)).get("data", [])
+        keys_data = {"items": [k for k in all_keys if k.get("is_active", False)]}
     except httpx.HTTPStatusError as e:
         ui.notify(f"Error {e.response.status_code} cargando tenant.", type="negative")
         return
@@ -480,22 +479,96 @@ async def page_tenant_detail(tenant_id: str) -> None:
     # ── API Keys ──────────────────────────────────────────────────────────────
     ui.separator().classes("my-5")
 
-    with ui.row().classes("items-center justify-between mb-3"):
+    # Dialog for success
+    secret_dialog = ui.dialog().props("persistent")
+    with secret_dialog:
+        with ui.card().classes("w-[500px] p-6"):
+            ui.label("¡API Key Creada!").classes("text-xl font-bold text-green-600 mb-2")
+            ui.label("Copia el siguiente secreto. NO se volverá a mostrar por razones de seguridad.").classes("text-sm text-gray-600 mb-4")
+            
+            secret_label = ui.input("Secreto", value="").classes("w-full bg-gray-50 font-mono text-lg").props("readonly")
+
+            async def _copy_secret() -> None:
+                await ui.run_javascript(f"navigator.clipboard.writeText({secret_label.value!r})")
+                ui.notify("Secreto copiado al portapapeles", type="positive", position="top", timeout=1500)
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Copiar secreto", icon="content_copy", on_click=_copy_secret).props('flat color="primary"')
+                ui.button("Cerrar", on_click=secret_dialog.close).props('unelevated color="primary"')
+
+    # Dialog for creation
+    create_key_dialog = ui.dialog().props("persistent")
+    with create_key_dialog:
+        with ui.card().classes("w-[440px] p-6"):
+            ui.label("Nueva API Key").classes("text-xl font-bold mb-4")
+            
+            key_name_in = ui.input("Nombre de la clave *", placeholder="Ej: Integración ERP").classes("w-full")
+            key_scopes_in = ui.select(
+                {"READ_ONLY": "Solo lectura", "WRITE": "Lectura y escritura"}, 
+                value="READ_ONLY", 
+                label="Permisos (Scope)"
+            ).classes("w-full mt-2")
+            key_err = ui.label("").classes("text-red-500 text-sm mt-1")
+
+            async def do_create_key() -> None:
+                key_err.set_text("")
+                if not key_name_in.value.strip():
+                    key_err.set_text("El nombre es obligatorio.")
+                    return
+                try:
+                    scopes_map = {
+                        "READ_ONLY": ["READ_INVENTORY", "READ_CATALOG"],
+                        "WRITE": ["READ_INVENTORY", "WRITE_INVENTORY", "READ_CATALOG", "WRITE_CATALOG"]
+                    }
+                    payload = {
+                        "name": key_name_in.value.strip(),
+                        "scopes": scopes_map.get(key_scopes_in.value, ["READ_INVENTORY", "READ_CATALOG"])
+                    }
+                    result = await api.create_tenant_key(_token(), tenant_id, payload)
+                    create_key_dialog.close()
+                    
+                    # Set value and show secret
+                    secret_label.set_value(result.get("key_secret", ""))
+                    secret_dialog.open()
+                    
+                    # Reload keys
+                    fresh_all = (await api.get_tenant_keys(_token(), tenant_id)).get("data", [])
+                    keys_data["items"] = [k for k in fresh_all if k.get("is_active", False)]
+                    await build_keys()
+                except Exception as ex:
+                    import httpx
+                    if isinstance(ex, httpx.HTTPStatusError):
+                        err_text = f"HTTP {ex.response.status_code}: {ex.response.text}"
+                        key_err.set_text(err_text)
+                    else:
+                        key_err.set_text(f"Error: {ex}")
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=create_key_dialog.close).props("flat")
+                ui.button("Crear API Key", on_click=do_create_key).props('unelevated color="primary"')
+
+    with ui.row().classes("items-center justify-between mb-3 w-full"):
         ui.label("API Keys").classes("text-lg font-bold")
-
-    keys: list[dict] = keys_data.get("items", [])
-
-    if not keys:
-        with ui.card().classes("w-full p-6 text-center"):
-            ui.icon("vpn_key", size="3rem").classes("text-gray-300")
-            ui.label("Sin API Keys").classes("text-gray-500 mt-2")
-        return
+        ui.button("+ Nueva API Key", on_click=lambda: (
+            key_name_in.set_value(""),
+            key_scopes_in.set_value("READ_ONLY"),
+            key_err.set_text(""),
+            create_key_dialog.open()
+        )).props('unelevated color="primary" dense')
 
     key_container = ui.column().classes("w-full gap-3")
 
     async def build_keys() -> None:
         key_container.clear()
         current_keys = keys_data.get("items", [])
+        
+        if not current_keys:
+            with key_container:
+                with ui.card().classes("w-full p-6 text-center"):
+                    ui.icon("vpn_key", size="3rem").classes("text-gray-300")
+                    ui.label("Sin API Keys").classes("text-gray-500 mt-2")
+            return
+
         with key_container:
             for k in current_keys:
                 is_active = k.get("is_active", False)
@@ -512,7 +585,13 @@ async def page_tenant_detail(tenant_id: str) -> None:
                                     ui.badge("Revocada", color="grey")
 
                             _info_row("Key prefix", k.get("key_id", ""), copyable=True)
-                            _info_row("Scope", k.get("scope", ""))
+                            scope_val = k.get("scopes", [])
+                            # Handle string or list scope backwards compat
+                            if isinstance(scope_val, list):
+                                scope_str = ", ".join(scope_val)
+                            else:
+                                scope_str = str(k.get("scope", ""))
+                            _info_row("Scope", scope_str)
                             expires = k.get("expires_at")
                             _info_row(
                                 "Expira",
@@ -540,8 +619,8 @@ async def page_tenant_detail(tenant_id: str) -> None:
                                             dlg.close()
                                             ui.notify("API Key revocada.", type="positive")
                                             # Reload keys
-                                            fresh = await api.get_tenant_keys(_token(), tenant_id)
-                                            keys_data["items"] = fresh.get("items", [])
+                                            fresh_all = (await api.get_tenant_keys(_token(), tenant_id)).get("data", [])
+                                            keys_data["items"] = [k for k in fresh_all if k.get("is_active", False)]
                                             await build_keys()
                                         except Exception as ex:
                                             ui.notify(f"Error: {ex}", type="negative")
