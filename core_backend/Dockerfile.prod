@@ -1,0 +1,63 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+# gcc/libpq-dev se necesitan para compilar algunas extensiones C en pip.
+# Con asyncpg (puro Python) no son estrictamente necesarias, pero quedan
+# en esta stage por si una dep futura las requiere — no llegan a la imagen final.
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+# Solo deps de producción; se excluyen pytest, ruff, mypy, httpx de test.
+RUN pip install --no-cache-dir --prefix=/install \
+    fastapi==0.110.0 \
+    "uvicorn[standard]==0.29.0" \
+    sqlalchemy==2.0.29 \
+    asyncpg==0.29.0 \
+    alembic==1.13.1 \
+    "pydantic[email]==2.7.0" \
+    pydantic-settings==2.2.1 \
+    "python-jose[cryptography]==3.3.0" \
+    "passlib[bcrypt]==1.7.4" \
+    "bcrypt==4.0.1" \
+    "redis==5.0.3" \
+    "celery==5.3.6" \
+    python-multipart==0.0.9 \
+    "resend==2.4.0" \
+    "aiofiles>=23.0" \
+    "httpx>=0.27.0"
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+WORKDIR /app
+
+# curl necesario para el HEALTHCHECK CMD
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+COPY app/ ./app/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./alembic.ini
+COPY static/ ./static/
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
