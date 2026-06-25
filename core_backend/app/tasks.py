@@ -8,7 +8,10 @@ Tasks registradas:
 """
 import asyncio
 import logging
+import smtplib
 from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import resend
 from celery import Celery
@@ -213,7 +216,7 @@ def send_email(
     template: str,
     context: dict,
 ) -> None:
-    """Envía un email usando Resend SDK.
+    """Envía un email usando Resend SDK (prod) o SMTP/Mailpit (staging).
 
     Soporta 9 templates predefinidos. Retry automático x3 con backoff exponencial.
     """
@@ -221,18 +224,35 @@ def send_email(
     if tpl is None:
         raise ValueError(f"Template desconocido: {template}")
 
-    resend.api_key = settings.RESEND_API_KEY
+    subject = tpl["subject"].format(**context)
+    text_body = tpl["text"].format(**context)
+    html_body = tpl["html"].format(**context)
+    from_header = f"{settings.RESEND_FROM_NAME} <{settings.RESEND_FROM_EMAIL}>"
 
-    # "from" es keyword en Python; se pasa como clave de dict literal
-    params: resend.Emails.SendParams = {  # type: ignore[assignment]
-        "from": f"{settings.RESEND_FROM_NAME} <{settings.RESEND_FROM_EMAIL}>",
-        "to": [to_email],
-        "subject": tpl["subject"].format(**context),
-        "text": tpl["text"].format(**context),
-        "html": tpl["html"].format(**context),
-    }
-    response = resend.Emails.send(params)
-    logger.info("Email enviado a %s (template=%s, id=%s)", to_email, template, response["id"])
+    if settings.APP_ENV == "staging":
+        # Staging: SMTP vía Mailpit — captura emails sin enviarlos al exterior
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = from_header
+        msg["To"] = to_email
+        msg.attach(MIMEText(text_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+            smtp.sendmail(settings.RESEND_FROM_EMAIL, [to_email], msg.as_string())
+        logger.info("Email (SMTP/Mailpit) enviado a %s (template=%s)", to_email, template)
+    else:
+        # Producción: Resend SDK
+        resend.api_key = settings.RESEND_API_KEY
+        # "from" es keyword en Python; se pasa como clave de dict literal
+        params: resend.Emails.SendParams = {  # type: ignore[assignment]
+            "from": from_header,
+            "to": [to_email],
+            "subject": subject,
+            "text": text_body,
+            "html": html_body,
+        }
+        response = resend.Emails.send(params)
+        logger.info("Email (Resend) enviado a %s (template=%s, id=%s)", to_email, template, response["id"])
 
 
 @celery_app.task(name="app.tasks.check_expiring_api_keys")

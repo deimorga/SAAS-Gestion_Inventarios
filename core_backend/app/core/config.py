@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     API_KEY_EXPIRY_DAYS: int = 365
     API_KEY_ROTATION_GRACE_DAYS: int = 30  # mín 7, máx 90 (por tenant vía config JSONB)
 
+    # SMTP — solo usado en APP_ENV=staging (Mailpit). En producción se usa Resend SDK.
+    SMTP_HOST: str = "inv-mailpit-staging"
+    SMTP_PORT: int = 1025
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 
