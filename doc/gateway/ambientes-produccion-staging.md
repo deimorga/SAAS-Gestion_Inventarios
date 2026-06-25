@@ -1,7 +1,7 @@
 # Ambientes Producción y Staging — Inventarios SaaS
 
-> Documento creado: 2026-06-25  
-> Estado: Staging operativo. Producción pendiente de arranque.
+> Documento creado: 2026-06-25 · Última actualización: 2026-06-25  
+> Estado: **Staging operativo y verificado ✅** · Producción pendiente de arranque.
 
 ---
 
@@ -212,8 +212,14 @@ docker compose -f docker-compose.staging.yml up -d worker beat admin-portal
 curl -X POST https://staging.inventarios.micronuba.net/admin/auth/register \
   -H "Content-Type: application/json" \
   -H "X-Bootstrap-Secret: <ADMIN_BOOTSTRAP_SECRET>" \
-  -d '{"email":"admin@staging.micronuba.net","password":"<contraseña>","full_name":"Admin Staging"}'
+  -d '{"email":"deimorga@gmail.com","password":"<contraseña_min_12_chars>","full_name":"Deiby Moreno"}'
 ```
+
+> **Staging ya tiene super_admin creado** (2026-06-25):
+> - Email: `deimorga@gmail.com`
+> - Contraseña: guardada de forma segura fuera del repo
+> - Role: `super_admin` · Tenant: `micronuba-internal`
+> - Política de contraseña: mínimo 12 caracteres
 
 ### Actualización rutinaria de staging
 ```bash
@@ -245,7 +251,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head
 curl -X POST https://api.inventarios.micronuba.net/admin/auth/register \
   -H "Content-Type: application/json" \
   -H "X-Bootstrap-Secret: <ADMIN_BOOTSTRAP_SECRET>" \
-  -d '{"email":"deimorga@gmail.com","password":"<contraseña_segura>","full_name":"Deiby Moreno"}'
+  -d '{"email":"deimorga@gmail.com","password":"<contraseña_min_12_chars>","full_name":"Deiby Moreno"}'
 
 # IMPORTANTE: vaciar ADMIN_BOOTSTRAP_SECRET en .env tras el bootstrap
 # nano /root/inventory-saas/.env → ADMIN_BOOTSTRAP_SECRET=
@@ -311,3 +317,27 @@ Traefik gestiona los certificados automáticamente con Let's Encrypt (HTTP-01, r
 | Swagger deshabilitado en prod | ✅ `ENABLE_SWAGGER=false` |
 | Rate limiting en API prod | ✅ 100 avg / 50 burst vía Traefik middleware |
 | HTTPS forzado (redirect 80→443) | ✅ Configurado en Traefik global |
+
+---
+
+## Estado actual de los ambientes (2026-06-25)
+
+### Staging — ✅ Operativo
+
+| Componente | Estado | Notas |
+|---|---|---|
+| Contenedores (7) | Todos `Up` | api/postgres/redis/mailpit `healthy` |
+| Migraciones (001→012) | ✅ Aplicadas | `alembic upgrade head` completado |
+| Certificado TLS | ✅ Let's Encrypt emitido | HTTP-01 via resolver `le` |
+| Super_admin | ✅ Creado | `deimorga@gmail.com` |
+| Email (Mailpit) | ✅ Funcional | `https://mail-staging.inventarios.micronuba.net` |
+
+### Producción — ⏳ Pendiente de arranque
+
+| Componente | Estado | Notas |
+|---|---|---|
+| Repo clonado en VPS | ✅ | `/root/inventory-saas/` · branch `main` |
+| `.env` configurado | ✅ | Secrets generados, permisos 600 |
+| Resend API key | ⚠️ Pendiente | Verificar key real de `notification.inventory@micronuba.net` |
+| Contenedores | ❌ No iniciados | Requiere Resend configurado primero |
+| Super_admin | ❌ No creado | Ejecutar bootstrap tras arranque |
