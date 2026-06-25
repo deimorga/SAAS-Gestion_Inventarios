@@ -31,7 +31,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL}
       RESEND_FROM_NAME: ${RESEND_FROM_NAME}
-      ACTIVATION_BASE_URL: ${ACTIVATION_BASE_URL:-https://admin.inventarios.micronuba.com}
+      ACTIVATION_BASE_URL: ${ACTIVATION_BASE_URL:-https://admin.inventarios.micronuba.net}
       ACTIVATION_TOKEN_TTL_HOURS: "48"
       API_KEY_EXPIRY_DAYS: "365"
       API_KEY_ROTATION_GRACE_DAYS: "30"
@@ -53,7 +53,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=micronuba_public"
-      - "traefik.http.routers.inv-api.rule=Host(`api.inventarios.micronuba.com`)"
+      - "traefik.http.routers.inv-api.rule=Host(`api.inventarios.micronuba.net`)"
       - "traefik.http.routers.inv-api.entrypoints=websecure"
       - "traefik.http.routers.inv-api.tls.certresolver=le"
       - "traefik.http.services.inv-api.loadbalancer.server.port=8000"
@@ -126,7 +126,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=micronuba_public"
-      - "traefik.http.routers.inv-admin.rule=Host(`admin.inventarios.micronuba.com`)"
+      - "traefik.http.routers.inv-admin.rule=Host(`admin.inventarios.micronuba.net`)"
       - "traefik.http.routers.inv-admin.entrypoints=websecure"
       - "traefik.http.routers.inv-admin.tls.certresolver=le"
       - "traefik.http.services.inv-admin.loadbalancer.server.port=8080"

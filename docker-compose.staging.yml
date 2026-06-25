@@ -5,7 +5,7 @@
 # Diferencias clave vs producción:
 #   - ENABLE_SWAGGER=true  (Swagger accesible en /docs)
 #   - 2 workers uvicorn y 2 celery (carga menor)
-#   - Mailpit disponible en mail-staging.inventarios.micronuba.com
+#   - Mailpit disponible en mail-staging.inventarios.micronuba.net
 #   - Secrets DEBEN ser distintos a los de producción
 
 services:
@@ -35,9 +35,9 @@ services:
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
       ADMIN_BOOTSTRAP_SECRET: ${ADMIN_BOOTSTRAP_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY:-re_staging_placeholder}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-staging@micronuba.com}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-staging@micronuba.net}
       RESEND_FROM_NAME: ${RESEND_FROM_NAME:-MicroNuba Staging}
-      ACTIVATION_BASE_URL: ${ACTIVATION_BASE_URL:-https://staging-admin.inventarios.micronuba.com}
+      ACTIVATION_BASE_URL: ${ACTIVATION_BASE_URL:-https://staging-admin.inventarios.micronuba.net}
       ACTIVATION_TOKEN_TTL_HOURS: "48"
       API_KEY_EXPIRY_DAYS: "365"
       API_KEY_ROTATION_GRACE_DAYS: "30"
@@ -61,7 +61,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=micronuba_public"
-      - "traefik.http.routers.inv-api-staging.rule=Host(`staging.inventarios.micronuba.com`)"
+      - "traefik.http.routers.inv-api-staging.rule=Host(`staging.inventarios.micronuba.net`)"
       - "traefik.http.routers.inv-api-staging.entrypoints=websecure"
       - "traefik.http.routers.inv-api-staging.tls.certresolver=le"
       - "traefik.http.services.inv-api-staging.loadbalancer.server.port=8000"
@@ -80,7 +80,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@inv-redis-staging:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@inv-redis-staging:6379/1
       RESEND_API_KEY: ${RESEND_API_KEY:-re_staging_placeholder}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-staging@micronuba.com}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-staging@micronuba.net}
       RESEND_FROM_NAME: ${RESEND_FROM_NAME:-MicroNuba Staging}
       API_KEY_EXPIRY_DAYS: "365"
       API_KEY_ROTATION_GRACE_DAYS: "30"
@@ -133,7 +133,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=micronuba_public"
-      - "traefik.http.routers.inv-admin-staging.rule=Host(`staging-admin.inventarios.micronuba.com`)"
+      - "traefik.http.routers.inv-admin-staging.rule=Host(`staging-admin.inventarios.micronuba.net`)"
       - "traefik.http.routers.inv-admin-staging.entrypoints=websecure"
       - "traefik.http.routers.inv-admin-staging.tls.certresolver=le"
       - "traefik.http.services.inv-admin-staging.loadbalancer.server.port=8080"
@@ -148,7 +148,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=micronuba_public"
-      - "traefik.http.routers.inv-mailpit-staging.rule=Host(`mail-staging.inventarios.micronuba.com`)"
+      - "traefik.http.routers.inv-mailpit-staging.rule=Host(`mail-staging.inventarios.micronuba.net`)"
       - "traefik.http.routers.inv-mailpit-staging.entrypoints=websecure"
       - "traefik.http.routers.inv-mailpit-staging.tls.certresolver=le"
       - "traefik.http.services.inv-mailpit-staging.loadbalancer.server.port=8025"
