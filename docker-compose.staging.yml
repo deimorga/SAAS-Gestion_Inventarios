@@ -74,6 +74,8 @@ services:
       - inv_app_staging
       - inv_data_staging
     command: celery -A app.tasks worker --loglevel=info --concurrency=2 -Q default,webhooks,bulk
+    healthcheck:
+      disable: true
     environment:
       APP_ENV: staging
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres-staging:5432/${POSTGRES_DB}
@@ -99,6 +101,8 @@ services:
     networks:
       - inv_app_staging
     command: celery -A app.tasks beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    healthcheck:
+      disable: true
     environment:
       APP_ENV: staging
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@inv-redis-staging:6379/1
@@ -125,10 +129,10 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
       interval: 30s
       timeout: 10s
-      start_period: 20s
+      start_period: 30s
       retries: 3
     labels:
       - "traefik.enable=true"
