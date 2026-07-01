@@ -11,6 +11,7 @@ from app.schemas.admin_tenant import (
     TenantResponse,
     TenantUpdate,
 )
+from app.schemas.api_key import ApiKeyCreate, ApiKeyCreateResponse
 from app.schemas.common import PaginatedResponse
 from app.services.admin_tenant import (
     create_tenant,
@@ -18,6 +19,7 @@ from app.services.admin_tenant import (
     list_tenants,
     update_tenant,
 )
+from app.services.api_key import create_api_key
 from app.services.api_key_rotation import admin_list_tenant_api_keys, admin_revoke_api_key
 
 
@@ -108,6 +110,26 @@ async def patch_tenant(
     db: AsyncSession = Depends(get_admin_db),
 ):
     return await update_tenant(tenant_id, body, db)
+
+
+@router.post(
+    "/{tenant_id}/api-keys",
+    response_model=ApiKeyCreateResponse,
+    status_code=201,
+    summary="Crear API Key para un tenant (admin)",
+    description="Genera una nueva API Key para el tenant indicado. El secreto solo se expone en esta respuesta.",
+    responses={
+        201: {"description": "API Key creada. El secreto solo se expone en esta respuesta."},
+        404: {"description": "Tenant no encontrado"},
+    },
+)
+async def create_tenant_api_key(
+    tenant_id: str,
+    body: ApiKeyCreate,
+    _auth: AuthContext = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_admin_db),
+):
+    return await create_api_key(body, db, tenant_id)
 
 
 @router.get(

@@ -57,6 +57,17 @@ async def get_tenant_keys(token: str, tenant_id: str) -> dict[str, Any]:
         return r.json()
 
 
+async def create_tenant_api_key(token: str, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=_TIMEOUT) as c:
+        r = await c.post(
+            f"/admin/tenants/{tenant_id}/api-keys",
+            json=payload,
+            headers=_headers(token),
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def revoke_key(token: str, tenant_id: str, key_id: str) -> None:
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=_TIMEOUT) as c:
         r = await c.delete(

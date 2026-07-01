@@ -21,6 +21,29 @@ def _guard() -> None:
         ui.navigate.to("/login")
 
 
+def _copy_js(value: str) -> str:
+    """JS compatible con Safari HTTP (execCommand) y navegadores modernos (clipboard API)."""
+    safe = value.replace("\\", "\\\\").replace("`", "\\`")
+    return f"""
+    (function() {{
+        const v = `{safe}`;
+        if (navigator.clipboard && window.isSecureContext) {{
+            navigator.clipboard.writeText(v);
+        }} else {{
+            const el = document.createElement('textarea');
+            el.value = v;
+            el.style.position = 'fixed';
+            el.style.left = '-9999px';
+            document.body.appendChild(el);
+            el.focus();
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+        }}
+    }})();
+    """
+
+
 def _info_row(label: str, value: str, copyable: bool = False) -> None:
     with ui.row().classes("items-center gap-2 w-full"):
         ui.label(label).classes("text-xs font-semibold text-gray-500 uppercase w-36 shrink-0")
@@ -28,9 +51,7 @@ def _info_row(label: str, value: str, copyable: bool = False) -> None:
         if copyable:
             ui.button(
                 icon="content_copy",
-                on_click=lambda v=value: ui.run_javascript(
-                    f"navigator.clipboard.writeText({v!r})"
-                ),
+                on_click=lambda v=value: ui.run_javascript(_copy_js(v)),
             ).props("flat dense size=xs").tooltip("Copiar")
 
 
@@ -91,7 +112,6 @@ async def page_tenants() -> None:
     token = _token()
     ui.colors(primary="#1a56db")
 
-    # ── Header ────────────────────────────────────────────────────────────────
     with ui.row().classes("w-full items-center justify-between mb-6"):
         ui.label("Tenants").classes("text-2xl font-bold")
         with ui.row().classes("items-center gap-2"):
@@ -102,7 +122,6 @@ async def page_tenants() -> None:
                 on_click=lambda: (app.storage.user.clear(), ui.navigate.to("/login")),
             ).props("flat dense color=negative")
 
-    # ── Create dialog ─────────────────────────────────────────────────────────
     created: dict[str, Any] = {}
 
     result_dialog = ui.dialog().props("persistent")
@@ -197,7 +216,6 @@ async def page_tenants() -> None:
                     result_content.refresh()
                     result_dialog.open()
                     await refresh_table()
-                    # Reset form
                     name_in.set_value("")
                     email_in.set_value("")
                     fullname_in.set_value("")
@@ -212,9 +230,8 @@ async def page_tenants() -> None:
                 ui.button("Cancelar", on_click=create_dialog.close).props("flat")
                 ui.button("Crear Tenant", on_click=do_create).props('unelevated color="primary"')
 
-    # ── Table ─────────────────────────────────────────────────────────────────
     with ui.row().classes("w-full justify-between items-center mb-3"):
-        ui.label("").classes("text-sm text-gray-500")  # placeholder for count
+        ui.label("").classes("text-sm text-gray-500")
         ui.button("+ Nuevo Tenant", on_click=create_dialog.open).props('unelevated color="primary"')
 
     table_container = ui.column().classes("w-full")
@@ -302,7 +319,6 @@ async def page_tenant_detail(tenant_id: str) -> None:
     token = _token()
     ui.colors(primary="#1a56db")
 
-    # ── Header ────────────────────────────────────────────────────────────────
     with ui.row().classes("w-full items-center gap-3 mb-6"):
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/tenants")).props(
             "flat round"
@@ -319,9 +335,7 @@ async def page_tenant_detail(tenant_id: str) -> None:
         ui.notify(f"Error: {ex}", type="negative")
         return
 
-    # ── Tenant info ───────────────────────────────────────────────────────────
     with ui.row().classes("w-full gap-4 items-start"):
-        # Info card
         with ui.card().classes("flex-1 p-5"):
             with ui.row().classes("items-center justify-between mb-4"):
                 ui.label("Información").classes("text-lg font-bold")
@@ -337,7 +351,6 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 _info_row("Slug", tenant["slug"], copyable=True)
                 _info_row("Creado", tenant["created_at"][:19].replace("T", " "))
 
-        # Quick actions card
         with ui.card().classes("w-64 p-5"):
             ui.label("Acciones").classes("text-lg font-bold mb-3")
 
@@ -377,26 +390,112 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 f'flat color="{btn_color}"'
             )
 
-    # ── API Keys ──────────────────────────────────────────────────────────────
+    # ── API Keys ──────────────────────────────────────────────────────────────────
     ui.separator().classes("my-5")
+
+    new_key_result: dict = {}
+
+    # Diálogo: mostrar key_secret (solo una vez tras la creación)
+    key_reveal_dialog = ui.dialog().props("persistent")
+    with key_reveal_dialog:
+        with ui.card().classes("w-[500px] p-6"):
+            ui.label("API Key creada").classes("text-lg font-bold text-green-600 mb-1")
+            ui.label("Copia la key ahora — no podrás verla de nuevo.").classes(
+                "text-sm text-amber-600 mb-4"
+            )
+
+            @ui.refreshable
+            def reveal_content() -> None:
+                k = new_key_result
+                if not k:
+                    return
+                with ui.column().classes("w-full gap-2"):
+                    _info_row("Nombre", k.get("name", ""))
+                    _info_row("Scopes", ", ".join(k.get("scopes", [])))
+                    ui.separator().classes("my-2")
+                    ui.label("API Key (copia ahora):").classes(
+                        "text-xs font-semibold text-gray-500 uppercase"
+                    )
+                    with ui.card().classes("bg-gray-100 w-full p-3"):
+                        ui.label(k.get("key_secret", "")).classes(
+                            "font-mono text-sm break-all text-gray-900"
+                        )
+                    ui.button(
+                        "Copiar Key",
+                        icon="content_copy",
+                        on_click=lambda v=k.get("key_secret", ""): ui.run_javascript(
+                            _copy_js(v)
+                        ),
+                    ).props("unelevated color=primary size=sm")
+
+            reveal_content()
+            with ui.row().classes("justify-end mt-4"):
+                ui.button("Cerrar", on_click=key_reveal_dialog.close).props("flat")
+
+    # Diálogo: crear API Key
+    ALL_SCOPES = [
+        "READ_INVENTORY", "WRITE_INVENTORY", "READ_CATALOG",
+        "WRITE_CATALOG", "MANAGE_WAREHOUSES", "MANAGE_RESERVATIONS", "ADMIN",
+    ]
+    create_key_dialog = ui.dialog().props("persistent")
+    with create_key_dialog:
+        with ui.card().classes("w-[440px] p-6"):
+            ui.label("Nueva API Key").classes("text-xl font-bold mb-4")
+            key_name_in = ui.input("Nombre *", placeholder="Integración Talleres").classes("w-full")
+            with ui.column().classes("mt-3 gap-1"):
+                ui.label("Scopes *").classes("text-sm font-semibold text-gray-600")
+                scope_checks = {s: ui.checkbox(s) for s in ALL_SCOPES}
+            key_err = ui.label("").classes("text-red-500 text-sm mt-2")
+
+            async def do_create_key() -> None:
+                key_err.set_text("")
+                if not key_name_in.value:
+                    key_err.set_text("El nombre es obligatorio.")
+                    return
+                selected = [s for s, cb in scope_checks.items() if cb.value]
+                if not selected:
+                    key_err.set_text("Selecciona al menos un scope.")
+                    return
+                try:
+                    data = await api.create_tenant_api_key(
+                        token, tenant_id, {"name": key_name_in.value.strip(), "scopes": selected}
+                    )
+                    new_key_result.clear()
+                    new_key_result.update(data)
+                    create_key_dialog.close()
+                    reveal_content.refresh()
+                    key_reveal_dialog.open()
+                    fresh = await api.get_tenant_keys(token, tenant_id)
+                    keys_data["data"] = fresh.get("data", [])
+                    await build_keys()
+                    key_name_in.set_value("")
+                    for cb in scope_checks.values():
+                        cb.set_value(False)
+                except httpx.HTTPStatusError as e:
+                    detail = e.response.json().get("detail", str(e))
+                    key_err.set_text(f"Error {e.response.status_code}: {detail}")
+                except Exception as ex:
+                    key_err.set_text(f"Error: {ex}")
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=create_key_dialog.close).props("flat")
+                ui.button("Crear Key", on_click=do_create_key).props('unelevated color="primary"')
 
     with ui.row().classes("items-center justify-between mb-3"):
         ui.label("API Keys").classes("text-lg font-bold")
-
-    keys: list[dict] = keys_data.get("items", [])
-
-    if not keys:
-        with ui.card().classes("w-full p-6 text-center"):
-            ui.icon("vpn_key", size="3rem").classes("text-gray-300")
-            ui.label("Sin API Keys").classes("text-gray-500 mt-2")
-        return
+        ui.button("+ Nueva API Key", on_click=create_key_dialog.open).props('unelevated color="primary"')
 
     key_container = ui.column().classes("w-full gap-3")
 
     async def build_keys() -> None:
         key_container.clear()
-        current_keys = keys_data.get("items", [])
+        current_keys = keys_data.get("data", [])
         with key_container:
+            if not current_keys:
+                with ui.card().classes("w-full p-6 text-center"):
+                    ui.icon("vpn_key", size="3rem").classes("text-gray-300")
+                    ui.label("Sin API Keys").classes("text-gray-500 mt-2")
+                return
             for k in current_keys:
                 is_active = k.get("is_active", False)
                 with ui.card().classes(
@@ -412,13 +511,14 @@ async def page_tenant_detail(tenant_id: str) -> None:
                                     ui.badge("Revocada", color="grey")
 
                             _info_row("Key prefix", k.get("key_id", ""), copyable=True)
-                            _info_row("Scope", k.get("scope", ""))
+                            _info_row("Scopes", ", ".join(k.get("scopes", [])))
                             expires = k.get("expires_at")
                             _info_row(
                                 "Expira",
                                 expires[:10] if expires else "Sin vencimiento",
                             )
                             _info_row("ID (UUID)", str(k.get("id", "")), copyable=True)
+                            _info_row("Creada", k.get("created_at", "")[:10])
 
                         if is_active:
                             revoke_dialog = ui.dialog()
@@ -439,9 +539,8 @@ async def page_tenant_detail(tenant_id: str) -> None:
                                             await api.revoke_key(token, tenant_id, kid)
                                             dlg.close()
                                             ui.notify("API Key revocada.", type="positive")
-                                            # Reload keys
                                             fresh = await api.get_tenant_keys(token, tenant_id)
-                                            keys_data["items"] = fresh.get("items", [])
+                                            keys_data["data"] = fresh.get("data", [])
                                             await build_keys()
                                         except Exception as ex:
                                             ui.notify(f"Error: {ex}", type="negative")
