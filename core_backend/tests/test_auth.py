@@ -33,9 +33,10 @@ async def test_login_unknown_email(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_invalid_body(client: AsyncClient):
-    # Contraseña demasiado corta (< 8 chars)
+    # Login no valida longitud mínima de contraseña (removido min_length=8 de LoginRequest).
+    # Una contraseña corta con usuario inexistente → 401, no 422.
     resp = await client.post("/v1/auth/login", json={"email": "x@x.com", "password": "short"})
-    assert resp.status_code == 422
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
