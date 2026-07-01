@@ -1,7 +1,18 @@
 # Ambientes Producción y Staging — Inventarios SaaS
 
-> Documento creado: 2026-06-25 · Última actualización: 2026-06-25  
-> Estado: **Staging operativo y verificado ✅** · Producción pendiente de arranque.
+> Documento creado: 2026-06-25 · Última actualización: 2026-07-01  
+> Estado: **Staging operativo ✅** · Producción pendiente de arranque ⏳
+
+## ⚠️ Estado de ramas (2026-07-01)
+
+Las ramas `develop` y `staging` han divergido desde el commit `21ee193` (Sprint 7 docs).
+
+| Rama | Tiene | Le falta |
+|---|---|---|
+| `staging` | Vistas de Productos, Stock y Categorías en portal admin · token auto-refresh · migración 013 (sale_price) | docker-compose.staging.yml · .env.staging.example · Dockerfile.prod · migración de dominios a micronuba.net |
+| `develop` | Infra completa (compose, env, Dockerfile.prod) · endpoint admin crear API Key · migración de dominios a micronuba.net | Vistas de Productos/Stock en portal admin · token auto-refresh |
+
+**Acción pendiente:** hacer merge bidireccional antes del próximo deploy a staging. Los archivos con conflicto real son `web_frontend/app/api.py`, `web_frontend/app/main.py`, `core_backend/app/api/deps.py` y `core_backend/app/api/admin/endpoints/admin_tenants.py`.
 
 ---
 
@@ -222,6 +233,11 @@ curl -X POST https://staging.inventarios.micronuba.net/admin/auth/register \
 > - Política de contraseña: mínimo 12 caracteres
 
 ### Actualización rutinaria de staging
+
+> ⚠️ **Antes de ejecutar**: verificar que las ramas `develop` y `staging` estén sincronizadas
+> (ver sección [Estado de ramas](#️-estado-de-ramas-2026-07-01) al inicio del documento).
+> Si hay divergencia, resolver el merge primero localmente y hacer push antes del `git pull`.
+
 ```bash
 cd /root/inventory-saas-staging
 git pull origin develop

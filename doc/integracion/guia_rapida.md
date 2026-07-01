@@ -1,12 +1,13 @@
 # Guía Rápida de Integración — MicroNuba Inventory API
 
-**Versión:** 1.0 · **Fecha:** 2026-05-14  
+**Versión:** 1.1 · **Fecha:** 2026-07-01  
 **Audiencia:** Desarrolladores externos que consumen la API desde sistemas de terceros (ej. Gestión de Talleres).
 
 ---
 
 ## Tabla de contenidos
 
+0. [Credenciales que recibes de MicroNuba](#0-credenciales-que-recibes-de-micronuba)
 1. [Prerrequisitos](#1-prerrequisitos)
 2. [Autenticarse y obtener JWT](#2-autenticarse-y-obtener-jwt)
 3. [Crear una API Key](#3-crear-una-api-key)
@@ -19,16 +20,41 @@
 
 ---
 
+## 0. Credenciales que recibes de MicroNuba
+
+Cuando tu cuenta es activada, el equipo de MicroNuba te entrega estos tres datos:
+
+| Dato | Ejemplo | Para qué sirve |
+|---|---|---|
+| **API URL** | `https://staging.inventarios.micronuba.net` | URL base de todas las llamadas |
+| **Tenant ID** | `e8826b95-4fe0-43d8-a1b9-02e54a5b26a9` | Identifica tu cuenta en el sistema |
+| **API Key** | `mk_live_xxxx.mk_secret_yyyy` | Header `X-API-Key` en cada request |
+
+> **Importante:** La API Key solo se muestra una vez al momento de ser generada. Guárdala de inmediato en tu gestor de secretos (variables de entorno, AWS Secrets Manager, etc.). Si la pierdes, debes contactar a MicroNuba para revocarla y emitir una nueva.
+
+### Verificación rápida (30 segundos)
+
+```bash
+curl -s https://staging.inventarios.micronuba.net/health \
+  -H "X-API-Key: mk_live_xxxx.mk_secret_yyyy"
+# → {"status": "ok"}
+```
+
+Si el health check responde `200 OK`, tu integración está lista para empezar.
+
+---
+
 ## 1. Prerrequisitos
 
 ### URLs base
 
-| Entorno     | URL base                                    |
-|-------------|---------------------------------------------|
-| Desarrollo  | `http://localhost:8002`                     |
-| Producción  | `https://api.inventarios.micronuba.com`     |
+| Entorno     | URL base                                              |
+|-------------|-------------------------------------------------------|
+| Desarrollo  | `http://localhost:8002`                               |
+| Staging     | `https://staging.inventarios.micronuba.net`           |
+| Producción  | `https://api.inventarios.micronuba.net`               |
 
-> La documentación interactiva (Swagger UI) está disponible en `{base_url}/docs`.
+> La documentación interactiva (Swagger UI) está disponible en `{base_url}/docs` (desactivada en producción).
 
 ### Prefijos de ruta
 
