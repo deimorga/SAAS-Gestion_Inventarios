@@ -119,18 +119,28 @@ async def get_current_auth(
 
     # ── Intentar API Key ───────────────────────────────────────────────────
     async with AsyncSessionLocal() as tmp_session:
+        # Bypass RLS to find the API key since we don't know the tenant_id yet
+        await tmp_session.execute(
+            text("SELECT set_config('app.current_tenant', :sentinel, true)"),
+            {"sentinel": _SUPER_ADMIN_SENTINEL},
+        )
         result = await tmp_session.execute(
-            select(ApiKey).where(ApiKey.key_id == token[:60])
+            select(ApiKey).where(ApiKey.key_hash == hash_api_secret(token))
         )
         api_key = result.scalar_one_or_none()
 
+    print(f"DEBUG: api_key={api_key}")
+
     if api_key is None or not api_key.is_active:
+        print(f"DEBUG: api_key is None or not active")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
 
     if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+        print(f"DEBUG: api_key expired")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API Key expirada")
 
     if hash_api_secret(token) != api_key.key_hash:
+        print(f"DEBUG: hash mismatch")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
 
     tier_key = f"tenant_tier:{api_key.tenant_id}"
@@ -165,8 +175,27 @@ async def get_auth_db(
 
 # ── Guards de rol ──────────────────────────────────────────────────────────
 
+# Qué roles efectivos otorga cada scope de API Key
+_API_KEY_SCOPE_ROLES: dict[str, set[str]] = {
+    "ADMIN":               {"super_admin", "tenant_admin", "inventory_manager", "viewer"},
+    "WRITE_CATALOG":       {"tenant_admin", "inventory_manager"},
+    "WRITE_INVENTORY":     {"tenant_admin", "inventory_manager"},
+    "MANAGE_WAREHOUSES":   {"tenant_admin", "inventory_manager"},
+    "MANAGE_RESERVATIONS": {"tenant_admin", "inventory_manager"},
+    "READ_CATALOG":        {"inventory_manager", "viewer"},
+    "READ_INVENTORY":      {"inventory_manager", "viewer"},
+}
+
+
 def require_roles(*roles: str):
     async def _check(auth: AuthContext = Depends(get_current_auth)) -> AuthContext:
+        if auth.auth_type == "api_key":
+            effective_roles: set[str] = set()
+            for scope in auth.scopes:
+                effective_roles.update(_API_KEY_SCOPE_ROLES.get(scope, set()))
+            if effective_roles & set(roles):
+                return auth
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         if auth.role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         return auth

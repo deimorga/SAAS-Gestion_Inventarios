@@ -62,7 +62,7 @@ async def register_super_admin(
     return await _issue_admin_tokens(user, redis)
 
 
-async def login_super_admin(
+async def login_admin_surface(
     email: str,
     password: str,
     db: AsyncSession,

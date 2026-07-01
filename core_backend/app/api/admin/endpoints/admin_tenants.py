@@ -21,7 +21,7 @@ from app.services.admin_tenant import (
 )
 from app.services.api_key import create_api_key
 from app.services.api_key_rotation import admin_list_tenant_api_keys, admin_revoke_api_key
-
+from app.services.audit import log_action
 
 
 router = APIRouter(prefix="/tenants", tags=["Admin — Tenants"])
@@ -116,20 +116,35 @@ async def patch_tenant(
     "/{tenant_id}/api-keys",
     response_model=ApiKeyCreateResponse,
     status_code=201,
-    summary="Crear API Key para un tenant (admin)",
-    description="Genera una nueva API Key para el tenant indicado. El secreto solo se expone en esta respuesta.",
+    summary="Crear API Key de un tenant (admin)",
+    description=(
+        "Genera una nueva API Key para el tenant indicado. "
+        "El secreto solo se expone una vez en la respuesta. "
+        "Solo accesible por super_admin."
+    ),
     responses={
-        201: {"description": "API Key creada. El secreto solo se expone en esta respuesta."},
+        201: {"description": "API Key creada."},
         404: {"description": "Tenant no encontrado"},
     },
 )
 async def create_tenant_api_key(
     tenant_id: str,
     body: ApiKeyCreate,
-    _auth: AuthContext = Depends(require_super_admin),
+    auth: AuthContext = Depends(require_super_admin),
     db: AsyncSession = Depends(get_admin_db),
 ):
-    return await create_api_key(body, db, tenant_id)
+    await get_tenant(tenant_id, db)
+    result = await create_api_key(body, db, tenant_id)
+    await log_action(
+        db=db,
+        tenant_id=tenant_id,
+        entity="api_keys",
+        entity_id=str(result.id),
+        action="CREATE_BY_ADMIN",
+        new_values={"name": result.name, "scopes": [s.value for s in result.scopes]},
+        performed_by={"type": "user", "id": auth.user_id},
+    )
+    return result
 
 
 @router.get(

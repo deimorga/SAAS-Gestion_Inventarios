@@ -6,7 +6,7 @@ from app.api.deps import get_db
 from app.core.redis_client import get_redis
 from app.schemas.admin_auth import AdminLoginResponse, AdminRegisterRequest
 from app.schemas.auth import LoginRequest
-from app.services.admin_auth import login_super_admin, register_super_admin
+from app.services.admin_auth import login_admin_surface, register_super_admin
 
 router = APIRouter(prefix="/auth", tags=["Admin — Auth"])
 
@@ -43,11 +43,11 @@ async def bootstrap_register(
 @router.post(
     "/login",
     response_model=AdminLoginResponse,
-    summary="Login de super_admin",
+    summary="Login de administración",
     description=(
-        "Autentica exclusivamente a usuarios con rol `super_admin`. "
+        "Autentica a usuarios con rol `super_admin`. "
         "Superficie separada de `/v1/auth/login` para no revelar la existencia del panel de administración "
-        "a usuarios de cliente. "
+        "a usuarios de cliente. Los `tenant_admin` deben usar `/v1/auth/login`. "
         "Si las credenciales son válidas pero el rol no es `super_admin`, retorna 403 genérico."
     ),
     responses={
@@ -62,4 +62,4 @@ async def admin_login(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    return await login_super_admin(body.email, body.password, db, redis)
+    return await login_admin_surface(body.email, body.password, db, redis)

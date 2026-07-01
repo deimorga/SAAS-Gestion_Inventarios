@@ -5,7 +5,7 @@ from app.schemas.auth import UserSummary
 
 class AdminRegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=12, description="Mínimo 12 caracteres")
+    password: str = Field(..., min_length=8, description="Mínimo 8 caracteres")
     full_name: str = Field(..., min_length=2, max_length=255)
 
 

@@ -104,6 +104,12 @@ class ProductCreate(BaseModel):
         description="Unidad de medida base del producto. Valores comunes: UND, KG, LT, PAR, MTS, CAJA.",
         examples=["UND"],
     )
+    sale_price: Decimal | None = Field(
+        None,
+        ge=0,
+        description="Precio de venta del producto. Opcional, solo referencial.",
+        examples=[Decimal("45000.00")],
+    )
     reorder_point: Decimal = Field(
         default=Decimal("0"),
         ge=0,
@@ -144,6 +150,7 @@ class ProductCreate(BaseModel):
                 "description": "Compatible con motores Chevrolet 2.0L y 2.4L — modelos 2015–2024.",
                 "category_id": "550e8400-e29b-41d4-a716-446655440010",
                 "base_uom": "UND",
+                "sale_price": 45000.00,
                 "reorder_point": 5,
                 "track_lots": False,
                 "track_serials": False,
@@ -159,6 +166,7 @@ class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     category_id: UUID | None = None
+    sale_price: Decimal | None = Field(None, ge=0)
     reorder_point: Decimal | None = Field(None, ge=0)
     track_lots: bool | None = None
     track_serials: bool | None = None
@@ -175,6 +183,7 @@ class ProductResponse(BaseModel):
     description: str | None
     category: CategorySummary | None
     base_uom: str
+    sale_price: Decimal | None
     current_cpp: Decimal
     reorder_point: Decimal
     track_lots: bool
@@ -196,6 +205,7 @@ class ProductListItem(BaseModel):
     name: str
     category: CategorySummary | None
     base_uom: str
+    sale_price: Decimal | None
     current_cpp: Decimal
     reorder_point: Decimal
     is_active: bool

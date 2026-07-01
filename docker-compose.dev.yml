@@ -131,6 +131,8 @@ services:
       - API_BASE_URL=http://inv-api:8000
       - STORAGE_SECRET=${STORAGE_SECRET:-dev-secret-change-in-prod}
       - PORT=8080
+    volumes:
+      - ./web_frontend:/app
     depends_on:
       api:
         condition: service_healthy

@@ -10,11 +10,29 @@ Escenarios:
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text
 
 from app.core.config import settings
 from tests.conftest import _TestSession, _delete_user_by_id
+
+
+# ── Fixture autouse: limpiar super_admins residuales antes de cada test ────
+
+@pytest_asyncio.fixture(autouse=True)
+async def _clean_residual_super_admins():
+    """Elimina cualquier super_admin residual de la DB antes de cada test.
+
+    Esto evita colisiones causadas por datos pre-sembrados en la DB de desarrollo
+    compartida (e.g., super_admins creados por seed_demo.py o sesiones previas).
+    """
+    async with _TestSession() as session:
+        await session.execute(
+            text("DELETE FROM users WHERE role = 'super_admin'")
+        )
+        await session.commit()
+    yield
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
