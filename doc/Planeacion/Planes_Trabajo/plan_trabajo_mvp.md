@@ -78,6 +78,37 @@ Cada sprint sigue el workflow API-First: Modelos → Schemas → Services → En
 - Celery tasks activas: check_expiring_keys, revoke_grace_period_key, send_email
 - `app/tasks.py` implementado (resuelve crash de inv-worker e inv-beat de Sprint 5)
 
+### Fase 5: Documentación de Integración (Sprint 7)
+
+| Sprint | Período | Objetivo | Items | Estado | Resultado |
+|--------|---------|----------|-------|--------|-----------|
+| Sprint 7 | 2026-05-14 | Eliminar fricción de integración para clientes | DOC-002..DOC-011 | ✅ Completado | Schemas enriquecidos, guía rápida, error catalog, scopes, colección Postman |
+
+**Entregables Sprint 7:**
+- Schemas Pydantic con `description` + `example` en campos principales (100%)
+- `doc/integracion/guia_rapida.md` — auth JWT, API Key, 3 flujos E2E con curls reales
+- `doc/integracion/error_catalog.md` — 46 códigos de error en 9 secciones
+- `doc/integracion/api_scopes.md` — tabla scope → endpoints + combinaciones mínimas por caso de uso
+- `doc/integracion/postman_collection.json` — 37 requests importables en Postman/Insomnia
+- DTs enriquecidos: integracion_masivas, reservas_demanda
+
+### Fase 6: Portal Operativo y Ambientes (Sprint 8)
+
+| Sprint | Período | Objetivo | Items | Estado | Resultado |
+|--------|---------|----------|-------|--------|-----------|
+| Sprint 8 | 2026-06-25 → 2026-07-01 | Portal web operativo + ambientes staging/prod | RF-044-ext, RF-045, INFRA-001/002, DOC-012/013 | ✅ Completado | Portal NiceGUI con gestión de productos/stock/API Keys; staging VPS operativo |
+
+**Entregables Sprint 8:**
+- `POST /admin/tenants/{id}/api-keys` — crear API Key desde admin con audit trail
+- 11 nuevos endpoints admin para productos, categorías, stock, almacenes y zonas
+- Portal NiceGUI: páginas `/products` y `/stock` por tenant; diálogo "+ Nueva API Key"
+- Clipboard compatible con Safari HTTP (`_copy_js` con execCommand fallback)
+- Token refresh automático en portal (401 → refresh → retry)
+- Migración 013: campo `sale_price` en tabla `products`
+- `docker-compose.staging.yml` y `docker-compose.prod.yml` para VPS
+- Ambiente staging operativo en `staging.inventarios.micronuba.net`
+- Ramas `develop` y `staging` unificadas (commit `0559ce0`)
+
 ---
 
 ## 3. Criterios de Éxito por Sprint

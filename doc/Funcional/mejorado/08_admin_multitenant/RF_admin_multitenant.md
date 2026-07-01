@@ -1,9 +1,9 @@
 # Módulo 08: Administración Multi-tenant y Gestión de Acceso
 
-**RF cubiertos:** RF-036 a RF-044  
+**RF cubiertos:** RF-036 a RF-045  
 **Prioridad:** P0 (Bloqueante para operación comercial)  
-**Sprint:** Sprint 6 — Admin & Onboarding ✅ Completado (2026-04-30)  
-**Estado Implementación:** 284 tests pasando, 93% cobertura, 0 ruff/mypy  
+**Sprint:** Sprint 6 ✅ (RF-036–044) · Sprint 8 ✅ (RF-044 extendido, RF-045 Portal Web)  
+**Estado Implementación:** RF-036–044: 284 tests, 93% cobertura · RF-045: Portal NiceGUI operativo en staging  
 **Documento padre:** [DEFINICION_SAAS.md](../00_definicion-solucion_saas/DEFINICION_SAAS.md)  
 **Depende de:** Módulo 01 (Gobierno y Seguridad)
 
@@ -338,10 +338,16 @@ graph TD
 - **ID:** RF-044
 - **Módulo:** Admin Multi-tenant
 - **Prioridad:** P1 — Necesario
-- **Descripción:** El super_admin puede ver y revocar API Keys de cualquier tenant para atender incidentes de seguridad o soporte. No puede ver el `key_secret` (que nunca se almacena en texto plano).
+- **Descripción:** El super_admin puede crear, ver y revocar API Keys de cualquier tenant para provisionamiento inicial y atención de incidentes de seguridad o soporte. No puede ver el `key_secret` de keys existentes (que nunca se almacena en texto plano), pero sí recibe el secreto al momento de crear una key nueva.
 - **Pre-condiciones:**
   1. El solicitante tiene `role=super_admin`.
-- **Flujo Principal:**
+- **Flujo Principal — Crear API Key para tenant:**
+  1. El super_admin llama a `POST /admin/tenants/{id}/api-keys` con `name` y `scopes`.
+  2. El sistema verifica que el tenant existe.
+  3. Crea la API Key bajo el contexto RLS del tenant específico (no bajo `__super_admin__`).
+  4. Retorna la key completa incluyendo `key_secret` — **única ocasión en que el secreto es visible**.
+  5. Registra en audit trail con `action=CREATE_BY_ADMIN`, `performed_by: {type: "user", id: super_admin_id}`.
+- **Flujo Principal — Listar y Revocar:**
   1. El super_admin lista las API Keys de un tenant: `GET /admin/tenants/{id}/api-keys`.
   2. Obtiene metadatos: `key_id`, `name`, `is_active`, `expires_at`, `last_used_at`, `created_at`.
   3. Para revocar: `DELETE /admin/tenants/{id}/api-keys/{key_id}`.
@@ -349,12 +355,51 @@ graph TD
   5. Se envía email de alerta al `tenant_admin` indicando revocación por parte del administrador.
   6. Se registra en audit trail con `performed_by: {type: "user", id: super_admin_id}`.
 - **Reglas de Negocio:**
-  - RN-044-1: El super_admin nunca puede ver ni recuperar el `key_secret` (no está almacenado).
-  - RN-044-2: La revocación por super_admin es inmediata y no respeta el período de gracia del tenant.
-  - RN-044-3: El tenant_admin recibe email de notificación cuando una de sus keys es revocada por el admin.
+  - RN-044-1: El super_admin nunca puede recuperar el `key_secret` de keys existentes (no está almacenado).
+  - RN-044-2: Al crear una key desde el admin, el secreto se expone solo en la respuesta de creación — no hay segunda oportunidad.
+  - RN-044-3: La revocación por super_admin es inmediata y no respeta el período de gracia del tenant.
+  - RN-044-4: El tenant_admin recibe email de notificación cuando una de sus keys es revocada por el admin.
+  - RN-044-5: La creación de API Key desde el admin se registra con `action=CREATE_BY_ADMIN` en audit_logs para diferenciarlo de la creación normal por el tenant.
 - **Manejo de Errores:**
   - Tenant no encontrado → `404 Not Found`.
   - Key no pertenece al tenant → `404 Not Found`.
+
+---
+
+### RF-045: Admin — Portal Web de Gestión Operativa
+
+- **ID:** RF-045
+- **Módulo:** Admin Multi-tenant
+- **Prioridad:** P1 — Necesario
+- **Descripción:** El super_admin dispone de un portal web (NiceGUI) para gestionar tenants, productos y stock sin necesidad de usar directamente la API. El portal es una capa de interfaz sobre los endpoints `/admin/*`; no implementa lógica de negocio adicional.
+- **Pre-condiciones:**
+  1. El portal web (`admin-portal`) está corriendo y conectado al backend.
+  2. El solicitante tiene credenciales de `super_admin`.
+- **Páginas implementadas:**
+
+  | Ruta | Funcionalidad |
+  |------|--------------|
+  | `/login` | Autenticación super_admin (cascada: intenta `/admin/auth/login`, fallback `/v1/auth/login` para tenant_admin) |
+  | `/tenants` | Listar tenants con acciones: ver detalle, suspender/reactivar, editar nombre/tier |
+  | `/tenants/{id}` | Detalle de tenant: información, acciones (suspender, gestionar productos, gestionar stock), lista de API Keys activas |
+  | `/tenants/{id}/products` | CRUD de productos del tenant: crear, editar, desactivar; agrupados por categoría |
+  | `/tenants/{id}/stock` | Ver saldos de stock; entrada de mercancía; ajuste por fila; ajustar a 0 (eliminar saldo) |
+
+- **Flujo Principal — Provisionamiento de nuevo tenant:**
+  1. Admin ingresa al portal y navega a `/tenants`.
+  2. Crea el tenant con nombre, tier y datos del admin inicial.
+  3. El sistema muestra el resultado: Tenant ID, Admin User ID, Admin Email — todos copiables.
+  4. Navega al detalle del tenant y crea la primera API Key desde el botón "+ Nueva API Key".
+  5. El sistema muestra el `key_secret` **una sola vez** en el diálogo de resultado.
+  6. El admin copia y entrega al cliente: URL API + Tenant ID + API Key completa.
+- **Reglas de Negocio:**
+  - RN-045-1: El portal usa refresh tokens — la sesión persiste sin re-login hasta que el refresh_token expire (7 días).
+  - RN-045-2: El campo `key_secret` solo se muestra en el momento de creación. El portal no almacena ni puede recuperar secrets posteriores.
+  - RN-045-3: El botón copiar usa `_copy_js()` compatible con Safari HTTP (sin HTTPS en desarrollo local).
+  - RN-045-4: El portal no tiene autoregistro — acceso exclusivo por credenciales existentes.
+- **Manejo de Errores:**
+  - Token expirado → refresh automático silencioso; si el refresh también falla → redirige a `/login`.
+  - Backend no disponible → toast de error, sin crash del portal.
 
 ---
 
@@ -483,8 +528,19 @@ tier:  ENTERPRISE
 | `GET` | `/admin/tenants` | RF-037 | Listar tenants (paginado, filtros) |
 | `GET` | `/admin/tenants/{id}` | RF-037 | Detalle de tenant |
 | `PATCH` | `/admin/tenants/{id}` | RF-037 | Actualizar tenant (tier, is_active) |
+| `POST` | `/admin/tenants/{id}/api-keys` | RF-044 | Crear API Key para el tenant (secreto visible solo en respuesta) |
 | `GET` | `/admin/tenants/{id}/api-keys` | RF-044 | Listar API Keys del tenant |
 | `DELETE` | `/admin/tenants/{id}/api-keys/{key_id}` | RF-044 | Revocar key de emergencia |
+| `GET` | `/admin/tenants/{id}/products` | RF-045 | Listar productos del tenant |
+| `POST` | `/admin/tenants/{id}/products` | RF-045 | Crear producto en el tenant |
+| `PATCH` | `/admin/tenants/{id}/products/{pid}` | RF-045 | Actualizar producto del tenant |
+| `DELETE` | `/admin/tenants/{id}/products/{pid}` | RF-045 | Desactivar producto del tenant |
+| `GET` | `/admin/tenants/{id}/categories` | RF-045 | Listar categorías del tenant |
+| `GET` | `/admin/tenants/{id}/stock` | RF-045 | Saldos de stock del tenant |
+| `POST` | `/admin/tenants/{id}/stock/receipts` | RF-045 | Registrar entrada de stock |
+| `POST` | `/admin/tenants/{id}/stock/adjustments` | RF-045 | Ajustar stock (campo: `new_qty`) |
+| `GET` | `/admin/tenants/{id}/warehouses` | RF-045 | Listar almacenes del tenant |
+| `GET` | `/admin/tenants/{id}/warehouses/{wid}/zones` | RF-045 | Listar zonas de un almacén |
 
 ### Superficie Cliente (`/auth/*` y `/v1/*`) — tenant_admin / api_consumer
 

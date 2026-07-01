@@ -26,8 +26,19 @@
 | 4 | `GET` | `/admin/tenants` | RF-037 | Listar tenants | JWT `super_admin` |
 | 5 | `GET` | `/admin/tenants/{id}` | RF-037 | Detalle de tenant | JWT `super_admin` |
 | 6 | `PATCH` | `/admin/tenants/{id}` | RF-037 | Actualizar tenant | JWT `super_admin` |
-| 7 | `GET` | `/admin/tenants/{id}/api-keys` | RF-044 | Listar API Keys del tenant | JWT `super_admin` |
-| 8 | `DELETE` | `/admin/tenants/{id}/api-keys/{key_id}` | RF-044 | Revocar key de emergencia | JWT `super_admin` |
+| 7 | `POST` | `/admin/tenants/{id}/api-keys` | RF-044 | Crear API Key (secreto visible solo en respuesta) | JWT `super_admin` |
+| 8 | `GET` | `/admin/tenants/{id}/api-keys` | RF-044 | Listar API Keys del tenant | JWT `super_admin` |
+| 9 | `DELETE` | `/admin/tenants/{id}/api-keys/{key_id}` | RF-044 | Revocar key de emergencia | JWT `super_admin` |
+| 10 | `GET` | `/admin/tenants/{id}/products` | RF-045 | Listar productos del tenant | JWT `super_admin` |
+| 11 | `POST` | `/admin/tenants/{id}/products` | RF-045 | Crear producto en el tenant | JWT `super_admin` |
+| 12 | `PATCH` | `/admin/tenants/{id}/products/{pid}` | RF-045 | Actualizar producto | JWT `super_admin` |
+| 13 | `DELETE` | `/admin/tenants/{id}/products/{pid}` | RF-045 | Desactivar producto (soft delete) | JWT `super_admin` |
+| 14 | `GET` | `/admin/tenants/{id}/categories` | RF-045 | Listar categorías del tenant | JWT `super_admin` |
+| 15 | `GET` | `/admin/tenants/{id}/stock` | RF-045 | Saldos de stock del tenant | JWT `super_admin` |
+| 16 | `POST` | `/admin/tenants/{id}/stock/receipts` | RF-045 | Registrar entrada de stock | JWT `super_admin` |
+| 17 | `POST` | `/admin/tenants/{id}/stock/adjustments` | RF-045 | Ajustar stock (`new_qty` = cantidad real) | JWT `super_admin` |
+| 18 | `GET` | `/admin/tenants/{id}/warehouses` | RF-045 | Listar almacenes del tenant | JWT `super_admin` |
+| 19 | `GET` | `/admin/tenants/{id}/warehouses/{wid}/zones` | RF-045 | Listar zonas de un almacén | JWT `super_admin` |
 
 ### Superficie Cliente — `/auth/*` y `/v1/*`
 

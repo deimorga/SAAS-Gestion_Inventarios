@@ -84,6 +84,7 @@ graph TD
   - RN-006-3: El campo `metadata` (JSONB) no tiene esquema fijo — cada tenant puede almacenar los atributos que necesite.
   - RN-006-4: La unidad de medida base (`uom`) define la unidad en la que se almacena y reporta el stock (ej: "unidades", "kg", "litros").
   - RN-006-5: El punto de reorden (`reorder_point`) define el umbral bajo el cual se generan alertas de stock bajo (RF-031).
+  - RN-006-6: El campo `sale_price` (Numeric 18,4, nullable) es informativo — referencia de precio de venta para análisis de margen. No activa lógica transaccional.
 - **Manejo de Errores:**
   - SKU duplicado dentro del tenant → `409 Conflict`.
   - Categoría o UOM referenciada no existe → `422 Unprocessable Entity`.
@@ -303,6 +304,7 @@ erDiagram
         string base_uom "Unidad de medida base"
         decimal reorder_point "Punto de reorden"
         decimal current_cpp "CPP actual (calculado)"
+        decimal sale_price "Precio de venta referencial (Numeric 18,4, nullable) — Sprint 8"
         boolean track_lots "¿Control por lote?"
         boolean track_serials "¿Control por serial?"
         boolean track_expiry "¿Control por vencimiento?"

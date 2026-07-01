@@ -73,7 +73,7 @@
 | 42 | RF-041 | Admin | Ciclo de Vida de API Keys (expiración, rotación reactiva, período gracia) | P0 | L | Sprint 6 | ✅ Completado | RF-002 |
 | 43 | RF-042 | Admin | Notificaciones de Expiración de API Keys (T-30, T-7, T-1, T-0) | P1 | M | Sprint 6 | ✅ Completado | RF-041, RF-043 |
 | 44 | RF-043 | Admin | Sistema de Notificaciones Transaccionales por Email (Resend) | P1 | M | Sprint 6 | ✅ Completado | RF-037..RF-041 |
-| 45 | RF-044 | Admin | Admin — Gestión de API Keys entre Tenants (super_admin) | P1 | S | Sprint 6 | ✅ Completado | RF-036, RF-041 |
+| 45 | RF-044 | Admin | Admin — Gestión de API Keys entre Tenants (listar, revocar, **crear**) | P1 | S | Sprint 6/8 | ✅ Completado | RF-036, RF-041 |
 
 ### Fase 5 — Documentación de Integración (Sprint 7)
 
@@ -90,6 +90,18 @@
 | 54 | DOC-010 | Docs | Guía de Scopes — tabla scope → endpoints permitidos, ejemplos de API Key mínima por caso de uso | P1 | S | Sprint 7 | 🔲 Pendiente | DOC-002 |
 | 55 | DOC-011 | Docs | Colección Postman/Insomnia — importable, variables de entorno, todos los módulos cubiertos con ejemplos pre-llenados | P2 | M | Sprint 7 | 🔲 Pendiente | DOC-002, DOC-003 |
 
+### Fase 6 — Portal Operativo y Ambientes (Sprint 8)
+
+| # | ID | Módulo | Descripción | Prioridad | Tamaño | Sprint | Estado | Dependencias |
+|---|---|--------|-------------|-----------|--------|--------|--------|-------------|
+| 56 | RF-044-ext | Admin | Crear API Key desde admin (`POST /admin/tenants/{id}/api-keys`) con audit trail | P0 | S | Sprint 8 | ✅ Completado | RF-044 |
+| 57 | RF-045 | Admin | Portal web NiceGUI — gestión de productos y stock por tenant; provisionamiento de API Keys | P0 | L | Sprint 8 | ✅ Completado | RF-044, RF-006, RF-016 |
+| 58 | RN-006-6 | Catálogo | Campo `sale_price` en productos (Numeric 18,4, nullable) — migración 013 | P1 | S | Sprint 8 | ✅ Completado | RF-006 |
+| 59 | INFRA-001 | Infra | `docker-compose.staging.yml` y `docker-compose.prod.yml` para VPS | P0 | M | Sprint 8 | ✅ Completado | — |
+| 60 | INFRA-002 | Infra | `Dockerfile.prod` para core_backend + templates `.env.*.example` | P1 | S | Sprint 8 | ✅ Completado | INFRA-001 |
+| 61 | DOC-012 | Docs | `guia_rapida.md` v1.1 — sección de credenciales + URL staging (`micronuba.net`) | P1 | S | Sprint 8 | ✅ Completado | DOC-003 |
+| 62 | DOC-013 | Docs | `ambientes-produccion-staging.md` — estado VPS, runbook de actualización | P1 | S | Sprint 8 | ✅ Completado | INFRA-001 |
+
 ---
 
 ## Resumen de Velocidad Estimada
@@ -101,5 +113,6 @@
 | Sprint 3 | RF-025..RF-027, RF-029..RF-032, DOC-001 | L (8 tareas) | Reportes + Reservas + Docs API | ✅ Completado (111 tests, 92% cov) |
 | Sprint 4 | RF-033..RF-035 | L (6 tareas) | Webhooks + Bulk Engine + Inventario Cíclico | ✅ Completado (154 tests, 91% cov) |
 | Sprint 5 | RF-009..RF-012, RF-014..RF-015, RF-021, RF-023..RF-024, RF-028 | XL (10 tareas) | Trazabilidad Avanzada | ✅ Completado (208 tests, 92% cov) |
-| Sprint 6 | RF-036..RF-044 | XL (9 RF, 37 tareas) | Admin Multi-tenant + Onboarding + Email | ✅ Completado |
-| Sprint 7 | DOC-002..DOC-011 | L (10 items, 18 tareas) | Documentación de Integración | 🔲 Planificado |
+| Sprint 6 | RF-036..RF-044 | XL (9 RF, 37 tareas) | Admin Multi-tenant + Onboarding + Email | ✅ Completado (284 tests, 93% cov) |
+| Sprint 7 | DOC-002..DOC-011 | L (10 items, 18 tareas) | Documentación de Integración | ✅ Completado (2026-05-14) |
+| Sprint 8 | RF-044-ext, RF-045, INFRA-001, INFRA-002, DOC-012, DOC-013 | L (7 items, 20 tareas) | Portal Operativo + Ambientes | ✅ Completado (2026-07-01) |
