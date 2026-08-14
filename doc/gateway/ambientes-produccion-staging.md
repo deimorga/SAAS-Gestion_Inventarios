@@ -1,18 +1,20 @@
 # Ambientes Producción y Staging — Inventarios SaaS
 
-> Documento creado: 2026-06-25 · Última actualización: 2026-07-01  
-> Estado: **Staging operativo ✅** · Producción pendiente de arranque ⏳
+> Documento creado: 2026-06-25 · Última actualización: 2026-08-14  
+> Estado: **Producción operativa ✅** · **Staging operativo ✅**
 
-## ⚠️ Estado de ramas (2026-07-01)
+## Estado de ramas (2026-08-14)
 
-Las ramas `develop` y `staging` han divergido desde el commit `21ee193` (Sprint 7 docs).
+`main`, `develop` y `staging` convergen en `2711dfb`. La divergencia de julio quedó resuelta.
 
-| Rama | Tiene | Le falta |
+| Rama | Rol | Dónde corre |
 |---|---|---|
-| `staging` | Vistas de Productos, Stock y Categorías en portal admin · token auto-refresh · migración 013 (sale_price) | docker-compose.staging.yml · .env.staging.example · Dockerfile.prod · migración de dominios a micronuba.net |
-| `develop` | Infra completa (compose, env, Dockerfile.prod) · endpoint admin crear API Key · migración de dominios a micronuba.net | Vistas de Productos/Stock en portal admin · token auto-refresh |
+| `main` | Producción | `/root/inventory-saas` |
+| `develop` | Staging | `/root/inventory-saas-staging` |
 
-**Acción pendiente:** hacer merge bidireccional antes del próximo deploy a staging. Los archivos con conflicto real son `web_frontend/app/api.py`, `web_frontend/app/main.py`, `core_backend/app/api/deps.py` y `core_backend/app/api/admin/endpoints/admin_tenants.py`.
+> ⚠️ **Regla que originó el incidente del 401**: producción despliega desde `main`, y `main`
+> DEBE recibir merge al cerrar cada sprint. Entre mayo y agosto de 2026 dejó de recibirlos, y
+> producción corrió tres meses con un fallo que ya estaba arreglado en `develop`.
 
 ---
 
@@ -234,9 +236,9 @@ curl -X POST https://staging.inventarios.micronuba.net/admin/auth/register \
 
 ### Actualización rutinaria de staging
 
-> ⚠️ **Antes de ejecutar**: verificar que las ramas `develop` y `staging` estén sincronizadas
-> (ver sección [Estado de ramas](#️-estado-de-ramas-2026-07-01) al inicio del documento).
-> Si hay divergencia, resolver el merge primero localmente y hacer push antes del `git pull`.
+> ⚠️ **Al cerrar el sprint**, adelantar `main` para que producción no se quede atrás:
+> `git checkout main && git merge --ff-only origin/develop && git push origin main`
+> (ver [Estado de ramas](#estado-de-ramas-2026-08-14) al inicio del documento).
 
 ```bash
 cd /root/inventory-saas-staging
@@ -336,24 +338,50 @@ Traefik gestiona los certificados automáticamente con Let's Encrypt (HTTP-01, r
 
 ---
 
-## Estado actual de los ambientes (2026-06-25)
+## Estado actual de los ambientes (2026-08-14)
 
 ### Staging — ✅ Operativo
 
 | Componente | Estado | Notas |
 |---|---|---|
 | Contenedores (7) | Todos `Up` | api/postgres/redis/mailpit `healthy` |
-| Migraciones (001→012) | ✅ Aplicadas | `alembic upgrade head` completado |
+| Commit | `2711dfb` | rama `develop` |
+| Migraciones (001→013) | ✅ Aplicadas | |
+| Rol de la app | ✅ `inv_app` | Sin superuser ni BYPASSRLS — RLS activo de verdad |
+| Suite de tests | ✅ 324/324 | Ejecutada dentro del propio ambiente |
 | Certificado TLS | ✅ Let's Encrypt emitido | HTTP-01 via resolver `le` |
 | Super_admin | ✅ Creado | `deimorga@gmail.com` |
-| Email (Mailpit) | ✅ Funcional | `https://mail-staging.inventarios.micronuba.net` |
+| Email (Mailpit) | ✅ Funcional | Entrega verificada end-to-end |
 
-### Producción — ⏳ Pendiente de arranque
+### Producción — ✅ Operativa
 
 | Componente | Estado | Notas |
 |---|---|---|
-| Repo clonado en VPS | ✅ | `/root/inventory-saas/` · branch `main` |
-| `.env` configurado | ✅ | Secrets generados, permisos 600 |
+| Repo clonado en VPS | ✅ | `/root/inventory-saas/` · rama `main` · `2711dfb` |
+| `.env` configurado | ✅ | Secrets con permisos 600 · respaldo `.env.bak.20260814-061516` |
+| Migraciones (001→013) | ✅ Aplicadas | Volcado previo en `/root/backup-inventory-prod-20260814-061516.sql` |
+| Rol de la app | ✅ `inv_app` | Sin superuser ni BYPASSRLS |
+| Contenedores | ✅ `Up` | api/admin-portal `healthy` |
+| Super_admin | ✅ | `deimorga@gmail.com` — contraseña rotada el 2026-08-14 |
+| Auth por API Key | ✅ Verificada | `Bearer key_secret → 200` |
 | Resend API key | ⚠️ Pendiente | Verificar key real de `notification.inventory@micronuba.net` |
-| Contenedores | ❌ No iniciados | Requiere Resend configurado primero |
-| Super_admin | ❌ No creado | Ejecutar bootstrap tras arranque |
+
+### Despliegue: el orden importa
+
+Crear el rol restringido **antes** de subir el código. Si no, `assert_rls_enforced` aborta el
+arranque a propósito:
+
+```bash
+cd /root/inventory-saas
+echo "APP_DB_USER=inv_app"                     >> .env
+echo "APP_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
+APP_DB_PASSWORD=... ./infra/postgres/create_app_role.sh inv-postgres inv_app
+
+git pull origin main
+docker compose -f docker-compose.prod.yml build api
+docker compose -f docker-compose.prod.yml run --rm --no-deps api python -m alembic upgrade head
+docker compose -f docker-compose.prod.yml up -d --force-recreate api worker beat admin-portal
+```
+
+> Los servicios de compose son `api`, `worker`, `beat`, `admin-portal`. `inv-api` es el
+> `container_name`, no el nombre del servicio.

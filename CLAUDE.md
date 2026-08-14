@@ -128,10 +128,26 @@ uvicorn app.main:app --reload
 - Super admin bypass: Uses sentinel value `__super_admin__` to bypass RLS (migration 012)
 - RLS is FORCE on sensitive tables (`users`, `api_keys`, `audit_logs`) — prevents accidental unprotected queries
 
+**Reglas que no se pueden saltar** (ver Cambios Recientes 2026-08-14):
+
+- **Nunca** llamar a `set_config('app.current_tenant', ...)` a mano. Usar
+  `set_tenant_context(session, tid)` o `set_system_context(session)` de `app.core.database`.
+  Un listener `after_begin` reinstala el contexto en cada transacción nueva, porque
+  `set_config(..., true)` es transaccional y **muere en cada `commit()`**.
+- La app corre con un rol **sin superuser ni BYPASSRLS** (`inv_app`): un superusuario ignora
+  las políticas incluso con FORCE y deja el aislamiento en papel mojado. `assert_rls_enforced()`
+  aborta el arranque si detecta lo contrario (solo avisa en `APP_ENV` development/test).
+- `DATABASE_URL` = rol restringido · `MIGRATION_DATABASE_URL` = rol owner, solo para Alembic.
+  Crear el rol con `infra/postgres/create_app_role.sh <contenedor-pg>` **antes** de desplegar.
+- `get_db()` (login, refresh, activación por token, auth de admin) activa el sentinel a
+  propósito: debe localizar al usuario antes de saber su tenant. Igual la búsqueda de API Key.
+  **Esos endpoints nunca deben servir datos de un tenant.**
+
 **Key Files**:
 - `app/api/deps.py` — Auth extraction and session injection
-- `app/core/database.py` — Session factories with RLS context
+- `app/core/database.py` — Session factories, helpers de contexto RLS, guard de arranque
 - `alembic/versions/012_admin_bootstrap.py` — RLS policy definitions
+- `infra/postgres/create_app_role.sh` — Crea el rol restringido (idempotente)
 
 ### Authentication & Authorization
 
@@ -222,6 +238,11 @@ endpoint(products.py)
 - Retries with backoff: 30s → 5min → 30min (max 3 attempts)
 - HMAC-SHA256 signature in `X-Signature` header
 
+**Colas**: `task_default_queue` debe coincidir con el `-Q` de los workers
+(`WORKER_DEFAULT_QUEUE = "default"` en `app/tasks.py`). Con la cola implícita de Celery
+(`celery`) las tareas **se encolan con éxito y nadie las ejecuta jamás**, sin error visible.
+Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
+
 **Key Files**:
 - `app/tasks.py` — Task definitions, Beat schedule
 - `app/main.py` — Background loops (webhook dispatch, reservation expiry)
@@ -280,7 +301,7 @@ endpoint(products.py)
 
 ### Alembic Migrations
 
-12 revisions in `core_backend/alembic/versions/`:
+13 revisions in `core_backend/alembic/versions/`:
 1. **001** — Initial schema
 2. **002** — Catalog enhancements
 3. **003** — Inventory (transactions, ledgers, reservations)
@@ -310,7 +331,9 @@ Critical settings in `.env`:
 
 | Variable | Purpose | Dev Default |
 |----------|---------|-------------|
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | DB credentials | inventory_user / devpassword123 / inventory_db |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Rol owner (superusuario): esquema y migraciones | inventory_user / devpassword123 / inventory_db |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | Rol de la app, sin superuser ni BYPASSRLS | inv_app / — |
+| `MIGRATION_DATABASE_URL` | URL de owner para Alembic; vacío = usa `DATABASE_URL` | (vacío) |
 | `REDIS_PASSWORD` | Redis auth (prod only) | devpassword123 |
 | `JWT_SECRET_KEY` | JWT signing key | dev-secret-key-change-in-production |
 | `ADMIN_BOOTSTRAP_SECRET` | First super_admin protection | change-me-bootstrap-secret |
@@ -325,12 +348,14 @@ Critical settings in `.env`:
 
 ### Test Modules
 
-All tests in `core_backend/tests/`:
+All tests in `core_backend/tests/` (26 módulos, 324 tests):
 - `test_auth.py`, `test_admin_auth.py`, `test_activation.py` — Auth & admin
 - `test_inventory.py`, `test_reservations.py`, `test_cycle_counts.py` — Inventory
 - `test_products.py`, `test_categories.py`, `test_suppliers.py` — Catalog
 - `test_warehouses.py`, `test_bins.py`, `test_batches.py` — Warehouse
 - `test_rls_isolation.py`, `test_api_key_rotation.py` — Security
+- `test_rls_enforcement.py` — El rol no puede saltarse RLS; el contexto sobrevive al commit
+- `test_activation_delivery.py` — El email de activación se encola; reenvío como super_admin
 - `test_webhooks.py`, `test_tasks.py` — Async & webhooks
 
 ### Running Tests
@@ -344,6 +369,22 @@ pytest --cov=app            # With coverage
 pytest -v --tb=short        # Verbose with short tracebacks
 pytest -s                   # Show print statements
 ```
+
+**Contra staging** — `Dockerfile.prod` no instala pytest ni copia `tests/`, así que hay que
+montar el código y añadir las dependencias al vuelo:
+
+```bash
+cd /root/inventory-saas-staging
+docker compose -f docker-compose.staging.yml run --rm --no-deps \
+  -v /root/inventory-saas-staging/core_backend:/src -w /src \
+  -e PYTHONPATH=/src -e APP_ENV=test \
+  api sh -c "pip install -q pytest pytest-asyncio pytest-cov && python -m pytest -q"
+```
+
+`PYTHONPATH=/src` es obligatorio o se importa el `app/` horneado en la imagen.
+`APP_ENV=test` evita que el guard de RLS aborte. Tarda ~5 minutos.
+
+`asyncpg` devuelve objetos `UUID`, no `str`: comparar con `id::text` en el SQL.
 
 ### Fixtures (conftest.py)
 
@@ -383,6 +424,23 @@ Tests are async-aware (`pytest-asyncio`). Database uses transaction rollback for
 - Cause: Target endpoint unreachable or erroring
 - Check: `webhook_deliveries.status`, response_body, retry count
 - Logs: `docker compose logs api` for dispatch loop errors
+
+**La API no arranca: `RuntimeError: El rol ... puede saltarse RLS`**
+- Causa: `DATABASE_URL` apunta a un superusuario. Es intencional, no un bug.
+- Fix: `infra/postgres/create_app_role.sh <contenedor-pg>` y apuntar `DATABASE_URL` al rol nuevo.
+
+**Una tarea Celery no se ejecuta nunca (sin error)**
+- Comprobar la cola: `redis-cli -n 1 LLEN celery` — si crece, se publica donde nadie escucha.
+- Fix: `task_default_queue` debe estar en el `-Q` de los workers.
+
+**`no such service: inv-api`**
+- Los servicios de compose son `api`, `worker`, `beat`, `admin-portal`.
+  `inv-api` es el `container_name`, no el nombre del servicio.
+
+**Un script por SSH se corta a media ejecución**
+- `docker exec -i` hereda el stdin del heredoc y se come el resto del script. Añadir `</dev/null`.
+- El tenant interno es STARTER (60 rpm): encadenar llamadas admin sin pausa da 429 y luego una
+  cascada de variables vacías que parece un fallo de autenticación. Meter `sleep 2` entre pasos.
 
 ### Useful SQL Queries
 
@@ -546,6 +604,42 @@ Todos requieren JWT `super_admin`. Usan sesión con RLS del tenant específico (
 ### Git
 - Rama `staging` creada y subida a GitHub — idéntica a `main`
 - Flujo: desarrollar en `staging`, merge a `main` para producción
+
+## Cambios Recientes (2026-08-14 — Fixes de seguridad)
+
+Cuatro fallos silenciosos: ninguno daba señal de error. Desplegados en prod y staging.
+
+| Fallo | Causa | ¿Diferencia entre ambientes? |
+|-------|-------|------------------------------|
+| 401 en toda API key | `main` sin el arreglo de `deps.py` desde mayo | Sí — puro desfase de ramas |
+| RLS inerte | El rol de la app era el superusuario de bootstrap de la imagen | No — prod y staging igual |
+| Contexto de tenant perdido | `set_config(..., true)` muere en cada `commit()` | No — en todos los entornos |
+| Ninguna tarea Celery corría | Se publicaba en la cola `celery`, que nadie escucha | No — en todos los entornos |
+
+Los tres últimos llevaban meses ahí. El 2 escondía al 3: mientras el rol fuera superusuario,
+RLS no llegaba a evaluarse y la pérdida de contexto era invisible.
+
+**Flujo de ramas** — producción despliega desde `main`, y `main` DEBE recibir merge al cerrar
+cada sprint. Que dejara de recibirlos en mayo es la causa raíz del 401.
+
+### Nuevos endpoints admin
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /admin/tenants/{id}/users` | Usuarios del tenant (identifica pendientes de activación) |
+| `POST /admin/tenants/{id}/users/{uid}/resend-activation` | Reenviar activación como super_admin |
+
+Existen porque `/v1/auth/resend-activation` exige `tenant_admin` del mismo tenant: un
+`super_admin` recibía 403 y un tenant recién creado quedaba inaccesible sin tocar la BD.
+
+### Otros
+
+- El email de activación **ahora se envía de verdad** al crear tenant, al crear usuario y al
+  reenviar (`dispatch_activation_email` en `app/services/activation.py`). Antes solo se
+  generaba el token en Redis y `ACTIVATION_BASE_URL` no se usaba en ninguna línea de código.
+- Ruff incluye `T20`: un `print()` en `app/` es error de lint.
+- **Pendiente conocido**: `check_expiring_api_keys` encola con `to_email=""`. Daba igual
+  mientras la tarea no corriera; ahora corre a diario a las 08:00 UTC.
 
 ## Glossary
 
