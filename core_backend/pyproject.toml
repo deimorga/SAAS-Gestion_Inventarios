@@ -3,7 +3,8 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W"]
+# T20 (flake8-print): impide que vuelvan a colarse print() de depuración
+select = ["E", "F", "W", "T20"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
