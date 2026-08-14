@@ -6,6 +6,7 @@ Se usa NullPool para evitar contaminación de conexiones entre tests.
 Cada test crea tenants/usuarios únicos y los elimina en teardown.
 """
 import asyncio
+import os
 import uuid
 
 import pytest
@@ -19,14 +20,25 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.main import app
 
-# Engine sin pool para tests — cada operación abre/cierra su propia conexión
-_test_engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+
+def _with_credentials(url: str, user: str, password: str) -> str:
+    """Devuelve la misma URL apuntando al rol indicado."""
+    return url.replace(url.split("//")[1].split("@")[0], f"{user}:{password}", 1)
+
+
+# Los fixtures insertan y borran datos de varios tenants sin fijar contexto, así
+# que necesitan el rol owner. Fuera de desarrollo ese ya no es DATABASE_URL.
+_OWNER_URL = settings.migration_url
+_test_engine = create_async_engine(_OWNER_URL, poolclass=NullPool)
 _TestSession = async_sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
 
-# Engine con usuario sin BYPASSRLS para validar RLS de PostgreSQL directamente
-_RLS_URL = settings.DATABASE_URL.replace(
-    settings.DATABASE_URL.split("//")[1].split("@")[0],
-    "inventory_app:apppassword123",
+# Engine con el rol restringido (sin BYPASSRLS) para validar RLS de verdad.
+# En dev se apunta al rol inventory_app; en staging/prod se pasan las mismas
+# credenciales con las que corre la aplicación.
+_RLS_URL = _with_credentials(
+    _OWNER_URL,
+    os.getenv("TEST_RLS_DB_USER", os.getenv("APP_DB_USER", "inventory_app")),
+    os.getenv("TEST_RLS_DB_PASSWORD", os.getenv("APP_DB_PASSWORD", "apppassword123")),
 )
 _rls_engine = create_async_engine(_RLS_URL, poolclass=NullPool)
 _RlsSession = async_sessionmaker(_rls_engine, class_=AsyncSession, expire_on_commit=False)

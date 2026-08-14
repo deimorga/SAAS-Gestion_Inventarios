@@ -10,7 +10,9 @@ from app.models.base import Base
 import app.models  # noqa: F401 — registra todos los modelos
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Las migraciones crean tablas y políticas RLS: requieren el rol owner, no el
+# rol restringido con el que corre la aplicación.
+config.set_main_option("sqlalchemy.url", settings.migration_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

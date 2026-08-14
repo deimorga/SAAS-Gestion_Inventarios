@@ -8,7 +8,14 @@ class Settings(BaseSettings):
     APP_DEBUG: bool = False
     ENABLE_SWAGGER: bool = True  # False en producción
 
+    # Conexión de la aplicación. Fuera de desarrollo DEBE apuntar a un rol sin
+    # superuser ni BYPASSRLS: de lo contrario las políticas RLS quedan inertes y
+    # el aislamiento entre tenants deja de estar garantizado por la base de datos.
+    # `assert_rls_enforced` lo comprueba al arrancar.
     DATABASE_URL: str = "postgresql+asyncpg://inventory_user:devpassword123@inv-postgres:5432/inventory_db"
+    # Conexión con privilegios de owner, usada solo por Alembic (DDL y políticas).
+    # Si se deja vacía, Alembic cae en DATABASE_URL.
+    MIGRATION_DATABASE_URL: str = ""
     REDIS_URL: str = "redis://inv-redis:6379/0"
     CELERY_BROKER_URL: str = "redis://inv-redis:6379/1"
 
@@ -50,6 +57,11 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 1025
 
     model_config = {"env_file": ".env", "case_sensitive": True}
+
+    @property
+    def migration_url(self) -> str:
+        """URL que usa Alembic: la de owner si está definida, si no la de la app."""
+        return self.MIGRATION_DATABASE_URL or self.DATABASE_URL
 
 
 @lru_cache

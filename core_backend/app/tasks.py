@@ -19,7 +19,7 @@ from celery.schedules import crontab
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, set_system_context
 from app.models.api_key import ApiKey
 
 logger = logging.getLogger(__name__)
@@ -272,6 +272,8 @@ async def _async_check_expiring_api_keys() -> dict:
     expired = 0
 
     async with AsyncSessionLocal() as db:
+        # Barre las keys de todos los tenants: requiere bypass explícito de RLS
+        await set_system_context(db)
         for days_ahead, template in milestones.items():
             target_date = today + timedelta(days=days_ahead)
             result = await db.execute(
@@ -320,6 +322,8 @@ def revoke_grace_period_key(key_id: str) -> dict:
 
 async def _async_revoke_grace_period_key(key_id: str) -> dict:
     async with AsyncSessionLocal() as db:
+        # La tarea recibe solo el id de la key, sin su tenant: bypass de RLS
+        await set_system_context(db)
         result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
         key = result.scalar_one_or_none()
         if key is None:

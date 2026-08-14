@@ -13,10 +13,15 @@ import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import (
+    SUPER_ADMIN_SENTINEL,
+    AsyncSessionLocal,
+    set_system_context,
+    set_tenant_context,
+)
 from app.core.redis_client import get_redis
 from app.core.security import (
     decode_access_token,
@@ -30,8 +35,8 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 # UUID fijo del tenant interno — debe coincidir con la migración 012
 MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
-# Sentinel que activa el bypass de RLS en las políticas de PostgreSQL
-_SUPER_ADMIN_SENTINEL = "__super_admin__"
+# Alias retrocompatible; la fuente de verdad vive en app.core.database
+_SUPER_ADMIN_SENTINEL = SUPER_ADMIN_SENTINEL
 
 
 @dataclass
@@ -67,10 +72,18 @@ async def _apply_rate_limit(tenant_id: str, tier: str, redis: aioredis.Redis) ->
     return {"limit": limit, "remaining": max(0, limit - count), "reset": reset_ts}
 
 
-# ── Sesión pública (sin RLS) — solo para login ─────────────────────────────
+# ── Sesión de resolución de credenciales ───────────────────────────────────
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Sesión para los endpoints que deben localizar un usuario ANTES de saber a
+    qué tenant pertenece: login, refresh, activación por token y auth de admin.
+
+    Activa el bypass de RLS porque la búsqueda es por email o por token, no por
+    tenant. Sin esto la app no puede autenticar a nadie cuando corre —como debe—
+    con un rol de base de datos sin BYPASSRLS.
+    """
     async with AsyncSessionLocal() as session:
+        await set_system_context(session)
         yield session
 
 
@@ -119,11 +132,8 @@ async def get_current_auth(
 
     # ── Intentar API Key ───────────────────────────────────────────────────
     async with AsyncSessionLocal() as tmp_session:
-        # Bypass RLS to find the API key since we don't know the tenant_id yet
-        await tmp_session.execute(
-            text("SELECT set_config('app.current_tenant', :sentinel, true)"),
-            {"sentinel": _SUPER_ADMIN_SENTINEL},
-        )
+        # Bypass de RLS: aún no sabemos a qué tenant pertenece la key
+        await set_system_context(tmp_session)
         result = await tmp_session.execute(
             select(ApiKey).where(ApiKey.key_hash == hash_api_secret(token))
         )
@@ -161,10 +171,7 @@ async def get_auth_db(
     auth: AuthContext = Depends(get_current_auth),
 ) -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"),
-            {"tid": auth.tenant_id},
-        )
+        await set_tenant_context(session, auth.tenant_id)
         yield session
 
 
@@ -224,8 +231,5 @@ async def get_admin_db(
     app.current_tenant, lo que activa el bypass de RLS definido en
     la migración 012 para users, api_keys y audit_logs."""
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :sentinel, true)"),
-            {"sentinel": _SUPER_ADMIN_SENTINEL},
-        )
+        await set_system_context(session)
         yield session

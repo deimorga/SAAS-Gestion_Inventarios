@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.admin.router import router as admin_router
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
-from app.core.database import engine
+from app.core.database import assert_rls_enforced, engine
 from app.core.exceptions import http_exception_handler, validation_exception_handler
 from app.core.redis_client import close_redis, get_redis
 
@@ -183,6 +183,8 @@ async def _dispatch_webhooks_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Falla rápido si la app corre con un rol capaz de ignorar RLS
+    await assert_rls_enforced()
     async for _ in get_redis():
         break
     task_reservations = asyncio.create_task(_expire_reservations_loop())

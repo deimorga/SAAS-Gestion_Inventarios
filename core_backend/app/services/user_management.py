@@ -15,7 +15,7 @@ from app.schemas.user_management import (
     UserResponse,
     UserUpdate,
 )
-from app.services.activation import generate_activation_token
+from app.services.activation import dispatch_activation_email, generate_activation_token
 
 # Roles que un tenant_admin puede crear (D-04: no puede escalar privilegios)
 _ALLOWED_ROLES = {"api_consumer", "inventory_manager", "viewer"}
@@ -60,7 +60,13 @@ async def create_user(
     await db.refresh(user)
 
     # Token de activación (F-4 /auth/activate lo consume)
-    await generate_activation_token(user.id, redis)
+    token = await generate_activation_token(user.id, redis)
+    dispatch_activation_email(
+        to_email=user.email,
+        full_name=user.full_name,
+        token=token,
+        template="account_activation",
+    )
 
     return UserResponse.model_validate(user)
 

@@ -8,8 +8,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.security import hash_password
+from app.services.activation import dispatch_activation_email, generate_activation_token
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.admin_tenant import (
@@ -83,9 +83,16 @@ async def create_tenant(
     await db.refresh(admin_user)
 
     # Token de activación almacenado en Redis (consumido por F-4 /auth/activate)
-    activation_token = secrets.token_urlsafe(32)
-    ttl_seconds = settings.ACTIVATION_TOKEN_TTL_HOURS * 3600
-    await redis.setex(f"activation:{activation_token}", ttl_seconds, admin_user.id)
+    activation_token = await generate_activation_token(admin_user.id, redis)
+
+    # El tenant ya está creado: si el email no se puede encolar se registra y se
+    # sigue. El administrador puede reenviarlo desde el portal.
+    dispatch_activation_email(
+        to_email=admin_user.email,
+        full_name=admin_user.full_name,
+        token=activation_token,
+        template="tenant_created",
+    )
 
     return TenantCreateResponse(
         id=tenant.id,

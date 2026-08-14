@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, set_system_context
 from app.core.security import generate_api_key_pair
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
@@ -22,6 +22,8 @@ async def _staggered_expiry() -> datetime:
     base = datetime.now(timezone.utc) + timedelta(days=settings.API_KEY_EXPIRY_DAYS)
 
     async with AsyncSessionLocal() as session:
+        # Busca colisiones de fecha entre las keys de todos los tenants
+        await set_system_context(session)
         for offset in range(15):
             candidate = base + timedelta(days=offset)
             candidate_date = candidate.date()

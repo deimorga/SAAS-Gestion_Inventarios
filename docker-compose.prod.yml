@@ -20,7 +20,14 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       ENABLE_SWAGGER: "false"
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      # Rol restringido (sin superuser ni BYPASSRLS) — mantiene RLS activo
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-inv_app}:${APP_DB_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      # Credenciales del rol de app, expuestas para que la suite de tests
+      # pueda abrir una conexión restringida y validar RLS
+      APP_DB_USER: ${APP_DB_USER:-inv_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      # Rol owner — solo para 'alembic upgrade'
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@inv-redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@inv-redis:6379/1
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
@@ -73,7 +80,10 @@ services:
       disable: true
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      # Rol restringido (sin superuser ni BYPASSRLS) — mantiene RLS activo
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-inv_app}:${APP_DB_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
+      # Rol owner — solo para 'alembic upgrade'
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@inv-postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@inv-redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@inv-redis:6379/1
       RESEND_API_KEY: ${RESEND_API_KEY}
