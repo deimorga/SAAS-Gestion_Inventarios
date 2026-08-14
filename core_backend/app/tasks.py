@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 # ── Celery app ─────────────────────────────────────────────────────────────
 
+# Debe coincidir con la primera cola del `-Q` de los workers en los
+# docker-compose. Si divergen, las tareas se encolan y nadie las recoge.
+WORKER_DEFAULT_QUEUE = "default"
+
 celery_app = Celery(
     "micronuba",
     broker=settings.CELERY_BROKER_URL,
@@ -40,6 +44,10 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     broker_connection_retry_on_startup=True,
+    # Los workers arrancan con `-Q default,webhooks,bulk`. Sin esto Celery
+    # publicaría en su cola por defecto, llamada "celery", que nadie consume:
+    # las tareas se encolarían con éxito y no las ejecutaría jamás nadie.
+    task_default_queue=WORKER_DEFAULT_QUEUE,
 )
 
 celery_app.conf.beat_schedule = {

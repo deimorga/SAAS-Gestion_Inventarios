@@ -217,3 +217,38 @@ async def test_check_expiring_keys_beat_schedule():
     assert "check-expiring-api-keys-daily" in schedule
     task_cfg = schedule["check-expiring-api-keys-daily"]
     assert task_cfg["task"] == "app.tasks.check_expiring_api_keys"
+
+
+# ── Enrutado de colas ──────────────────────────────────────────────────────
+
+
+def test_la_cola_por_defecto_es_una_que_el_worker_consume():
+    """Celery debe publicar en `default`, no en su cola implícita `celery`.
+
+    Los workers arrancan con `-Q default,webhooks,bulk`. Con la cola por defecto
+    de Celery las tareas se encolaban con éxito y nadie las ejecutaba: en
+    staging había 68 emails acumulados sin entregar y ningún error a la vista.
+    """
+    from app.tasks import WORKER_DEFAULT_QUEUE, celery_app
+
+    assert celery_app.conf.task_default_queue == WORKER_DEFAULT_QUEUE
+    assert WORKER_DEFAULT_QUEUE != "celery"
+
+
+def test_las_colas_del_compose_incluyen_la_por_defecto():
+    """Los `-Q` de worker en cada compose deben incluir la cola por defecto."""
+    import pathlib
+    import re
+
+    from app.tasks import WORKER_DEFAULT_QUEUE
+
+    raiz = pathlib.Path(__file__).resolve().parents[2]
+    composes = sorted(raiz.glob("docker-compose*.yml"))
+    assert composes, "no encontré ficheros docker-compose"
+
+    for fichero in composes:
+        for colas in re.findall(r"celery -A app\.tasks worker[^\n]*-Q ([\w,]+)", fichero.read_text()):
+            assert WORKER_DEFAULT_QUEUE in colas.split(","), (
+                f"{fichero.name}: el worker escucha '{colas}' y no incluye "
+                f"'{WORKER_DEFAULT_QUEUE}'"
+            )
