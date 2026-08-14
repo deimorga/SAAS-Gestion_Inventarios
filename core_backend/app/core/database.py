@@ -2,8 +2,9 @@ import logging
 from contextvars import ContextVar
 from typing import AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session as SyncSession
 
 from app.core.config import settings
 
@@ -33,12 +34,42 @@ AsyncSessionLocal = async_sessionmaker(
 current_tenant_id: ContextVar[str | None] = ContextVar("current_tenant_id", default=None)
 
 
+# Clave bajo la que cada sesión recuerda su contexto RLS en `Session.info`
+_RLS_CONTEXT_KEY = "rls_context"
+
+_SET_CONTEXT_SQL = text("SELECT set_config('app.current_tenant', :value, true)")
+
+
+def _session_info(session) -> dict:
+    """`info` de la sesión, sea AsyncSession o Session síncrona."""
+    return getattr(session, "sync_session", session).info
+
+
+@event.listens_for(SyncSession, "after_begin")
+def _reapply_rls_context(session, transaction, connection) -> None:
+    """Reinstala `app.current_tenant` al empezar cada transacción.
+
+    `set_config(..., true)` vive solo mientras dura la transacción: al hacer
+    commit, PostgreSQL lo descarta. Cualquier lectura posterior en la misma
+    sesión —un `refresh()` tras insertar una fila, o un segundo commit— saldría
+    sin tenant y las políticas RLS la dejarían a ciegas. Con un rol superusuario
+    el defecto era invisible porque RLS no llegaba a aplicarse.
+    """
+    value = session.info.get(_RLS_CONTEXT_KEY)
+    if value is not None:
+        connection.execute(_SET_CONTEXT_SQL, {"value": value})
+
+
+async def _apply_rls_context(session: AsyncSession, value: str) -> None:
+    # Se recuerda en `info` para que `_reapply_rls_context` lo reinstale en las
+    # transacciones siguientes, y se aplica ya para la actual.
+    _session_info(session)[_RLS_CONTEXT_KEY] = value
+    await session.execute(_SET_CONTEXT_SQL, {"value": value})
+
+
 async def set_tenant_context(session: AsyncSession, tenant_id: str) -> None:
     """Fija el tenant de la sesión para que apliquen las políticas RLS."""
-    await session.execute(
-        text("SELECT set_config('app.current_tenant', :tid, true)"),
-        {"tid": tenant_id},
-    )
+    await _apply_rls_context(session, tenant_id)
 
 
 async def set_system_context(session: AsyncSession) -> None:
@@ -48,10 +79,7 @@ async def set_system_context(session: AsyncSession) -> None:
     API key, token de activación) y tareas de sistema que barren todos los tenants
     (expiración de API keys, rotación). Nunca para atender datos de un tenant.
     """
-    await session.execute(
-        text("SELECT set_config('app.current_tenant', :sentinel, true)"),
-        {"sentinel": SUPER_ADMIN_SENTINEL},
-    )
+    await _apply_rls_context(session, SUPER_ADMIN_SENTINEL)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

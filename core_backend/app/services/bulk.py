@@ -1,7 +1,6 @@
 from fastapi import HTTPException
-from sqlalchemy import text
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, set_tenant_context
 from app.schemas.bulk import BulkIssueRequest, BulkReceiptRequest, BulkResult, BulkTransferRequest
 from app.schemas.bulk import BulkItemResult
 from app.services.inventory import process_issue, process_receipt, process_transfer
@@ -10,10 +9,7 @@ from app.services.inventory import process_issue, process_receipt, process_trans
 async def _run_in_session(tenant_id: str, fn, body, created_by: str) -> str:
     """Ejecuta fn(body, session, tenant_id, created_by) en sesión independiente. Retorna transaction_id."""
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"),
-            {"tid": tenant_id},
-        )
+        await set_tenant_context(session, tenant_id)
         tx = await fn(body, session, tenant_id, created_by)
         return str(tx.transaction_id)
 

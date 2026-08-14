@@ -169,10 +169,10 @@ async def get_valuation(
 
 
 async def _build_snapshot(tenant_id: str, body: SnapshotCreate) -> None:
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal, set_tenant_context
 
     async with AsyncSessionLocal() as session:
-        await session.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": tenant_id})
+        await set_tenant_context(session, tenant_id)
         rows = (
             await session.execute(
                 text(

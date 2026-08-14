@@ -25,7 +25,7 @@ async def _expire_reservations_loop() -> None:
     procesa cada tenant con su contexto.
     """
     from sqlalchemy import text
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal, set_tenant_context
 
     while True:
         await asyncio.sleep(60)
@@ -38,9 +38,7 @@ async def _expire_reservations_loop() -> None:
                 expired_any = False
                 for tenant_row in tenant_rows:
                     tid = str(tenant_row.id)
-                    await session.execute(
-                        text("SET LOCAL app.current_tenant = :tid"), {"tid": tid}
-                    )
+                    await set_tenant_context(session, tid)
                     expired_rows = (
                         await session.execute(
                             text(
@@ -91,7 +89,7 @@ async def _dispatch_webhooks_loop() -> None:
 
     import httpx
     from sqlalchemy import text
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal, set_tenant_context
 
     _backoff = [30, 300, 1800]
 
@@ -105,9 +103,7 @@ async def _dispatch_webhooks_loop() -> None:
 
                 for tenant_row in tenant_rows:
                     tid = str(tenant_row.id)
-                    await session.execute(
-                        text("SET LOCAL app.current_tenant = :tid"), {"tid": tid}
-                    )
+                    await set_tenant_context(session, tid)
                     pending = (
                         await session.execute(
                             text(

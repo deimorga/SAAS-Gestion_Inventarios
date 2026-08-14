@@ -113,6 +113,46 @@ async def test_el_contexto_de_tenant_acota_lo_visible(tenant_a, tenant_b, user_a
     assert user_b["id"] not in visibles
 
 
+# ── El contexto debe sobrevivir al commit ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_el_contexto_sobrevive_al_commit(tenant_a):
+    """`set_config(..., true)` muere con la transacción; el listener lo repone.
+
+    Sin esto, cualquier servicio que hiciera commit y luego leyera —un
+    `refresh()` tras insertar, por ejemplo— se quedaba sin tenant y RLS lo
+    dejaba a ciegas. Con un rol superusuario nunca se notó.
+    """
+    async with _RlsSession() as session:
+        await set_tenant_context(session, tenant_a["id"])
+
+        antes = (
+            await session.execute(text("SELECT current_setting('app.current_tenant', true)"))
+        ).scalar_one()
+        await session.commit()
+        despues = (
+            await session.execute(text("SELECT current_setting('app.current_tenant', true)"))
+        ).scalar_one()
+
+    assert antes == tenant_a["id"]
+    assert despues == tenant_a["id"], "el contexto se perdió al hacer commit"
+
+
+@pytest.mark.asyncio
+async def test_las_filas_siguen_visibles_tras_commit(tenant_a, user_a):
+    """Tras un commit, la sesión sigue viendo los datos de su tenant."""
+    async with _RlsSession() as session:
+        await set_tenant_context(session, tenant_a["id"])
+        await session.commit()
+
+        visibles = (
+            await session.execute(text("SELECT id FROM users"))
+        ).scalars().all()
+
+    assert user_a["id"] in visibles
+
+
 # ── Las api_keys, que es donde estalló ─────────────────────────────────────
 
 

@@ -1,10 +1,9 @@
 from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, require_super_admin
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, set_tenant_context
 from app.schemas.common import PaginatedResponse
 from app.schemas.inventory import AdjustmentRequest, ReceiptRequest, TransactionResponse
 from app.services import inventory as inv_service
@@ -15,10 +14,7 @@ router = APIRouter(tags=["Admin — Stock"])
 
 async def _session(tenant_id: str) -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"),
-            {"tid": tenant_id},
-        )
+        await set_tenant_context(session, tenant_id)
         yield session
 
 
@@ -36,9 +32,7 @@ async def admin_stock_balances(
     _auth: AuthContext = Depends(require_super_admin),
 ):
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
-        )
+        await set_tenant_context(session, tenant_id)
         return await inv_service.query_stock_balances(
             db=session,
             tenant_id=tenant_id,
@@ -61,9 +55,7 @@ async def admin_stock_receipt(
     _auth: AuthContext = Depends(require_super_admin),
 ):
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
-        )
+        await set_tenant_context(session, tenant_id)
         return await inv_service.process_receipt(body=body, db=session, tenant_id=tenant_id)
 
 
@@ -79,9 +71,7 @@ async def admin_stock_adjustment(
     _auth: AuthContext = Depends(require_super_admin),
 ):
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
-        )
+        await set_tenant_context(session, tenant_id)
         return await inv_service.process_adjustment(body=body, db=session, tenant_id=tenant_id)
 
 
@@ -94,9 +84,7 @@ async def admin_list_warehouses(
     _auth: AuthContext = Depends(require_super_admin),
 ):
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
-        )
+        await set_tenant_context(session, tenant_id)
         warehouses = await wh_service.list_warehouses(db=session, tenant_id=tenant_id)
         return [{"id": str(w.id), "name": w.name} for w in warehouses]
 
@@ -111,8 +99,6 @@ async def admin_list_zones(
     _auth: AuthContext = Depends(require_super_admin),
 ):
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_tenant', :tid, true)"), {"tid": tenant_id}
-        )
+        await set_tenant_context(session, tenant_id)
         zones = await wh_service.list_zones(warehouse_id=warehouse_id, db=session, tenant_id=tenant_id)
         return [{"id": str(z.id), "name": z.name, "zone_type": z.zone_type} for z in zones]
