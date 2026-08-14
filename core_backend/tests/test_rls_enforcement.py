@@ -23,8 +23,13 @@ from tests.conftest import _RlsSession, _TestSession
 
 @pytest.mark.asyncio
 async def test_guard_aborta_en_produccion_con_rol_privilegiado(monkeypatch):
-    """Con un rol que ignora RLS y APP_ENV=production, la app no debe arrancar."""
+    """Con un rol que ignora RLS y APP_ENV=production, la app no debe arrancar.
+
+    Se apunta al rol owner explícitamente: DATABASE_URL ya no es privilegiada en
+    los entornos desplegados, que es justamente lo que este cambio persigue.
+    """
     monkeypatch.setattr(db_module.settings, "APP_ENV", "production")
+    monkeypatch.setattr(db_module, "AsyncSessionLocal", _TestSession)
 
     with pytest.raises(RuntimeError) as exc:
         await assert_rls_enforced()
@@ -38,6 +43,7 @@ async def test_guard_aborta_en_produccion_con_rol_privilegiado(monkeypatch):
 async def test_guard_solo_avisa_en_desarrollo(monkeypatch):
     """En desarrollo se tolera: la suite necesita un rol con privilegios."""
     monkeypatch.setattr(db_module.settings, "APP_ENV", "development")
+    monkeypatch.setattr(db_module, "AsyncSessionLocal", _TestSession)
     await assert_rls_enforced()  # no debe lanzar
 
 
@@ -92,7 +98,7 @@ async def test_el_sentinel_permite_resolver_credenciales(tenant_a, user_a):
         await set_system_context(session)
         found = (
             await session.execute(
-                text("SELECT id FROM users WHERE email = :email"),
+                text("SELECT id::text FROM users WHERE email = :email"),
                 {"email": user_a["email"]},
             )
         ).scalar_one_or_none()
@@ -106,7 +112,7 @@ async def test_el_contexto_de_tenant_acota_lo_visible(tenant_a, tenant_b, user_a
     async with _RlsSession() as session:
         await set_tenant_context(session, tenant_a["id"])
         visibles = (
-            await session.execute(text("SELECT id FROM users"))
+            await session.execute(text("SELECT id::text FROM users"))
         ).scalars().all()
 
     assert user_a["id"] in visibles
@@ -147,7 +153,7 @@ async def test_las_filas_siguen_visibles_tras_commit(tenant_a, user_a):
         await session.commit()
 
         visibles = (
-            await session.execute(text("SELECT id FROM users"))
+            await session.execute(text("SELECT id::text FROM users"))
         ).scalars().all()
 
     assert user_a["id"] in visibles
