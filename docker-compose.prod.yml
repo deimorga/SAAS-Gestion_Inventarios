@@ -73,6 +73,11 @@ services:
     container_name: inv-worker
     restart: unless-stopped
     networks:
+      # inv_app e inv_data son internal:true. El worker necesita salida a
+      # internet para llegar a la API de Resend; sin esto todo envío de email
+      # falla con "Failed to resolve api.resend.com". No publica puertos ni
+      # tiene labels de Traefik: solo gana egress, no queda expuesto.
+      - micronuba_public
       - inv_app
       - inv_data
     command: celery -A app.tasks worker --loglevel=info --concurrency=4 -Q default,webhooks,bulk

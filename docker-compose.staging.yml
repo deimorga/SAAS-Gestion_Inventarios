@@ -78,6 +78,11 @@ services:
     container_name: inv-worker-staging
     restart: unless-stopped
     networks:
+      # Ver la nota del worker de producción: las redes inv_*_staging son
+      # internal:true y el worker necesita egress para el envío de email.
+      # En staging el SMTP es Mailpit (interno), pero se mantiene la paridad
+      # con producción para que el ambiente siga siendo representativo.
+      - micronuba_public
       - inv_app_staging
       - inv_data_staging
     command: celery -A app.tasks worker --loglevel=info --concurrency=2 -Q default,webhooks,bulk
