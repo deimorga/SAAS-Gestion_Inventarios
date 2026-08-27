@@ -14,7 +14,9 @@ Cubre RF-044 (crear API Key desde admin) y RF-045 (portal operativo):
   POST   /admin/tenants/{id}/stock/receipts
   POST   /admin/tenants/{id}/stock/adjustments
   GET    /admin/tenants/{id}/warehouses
+  POST   /admin/tenants/{id}/warehouses
   GET    /admin/tenants/{id}/warehouses/{wid}/zones
+  POST   /admin/tenants/{id}/warehouses/{wid}/zones
 """
 import uuid
 
@@ -484,3 +486,78 @@ async def test_admin_stock_tenant_isolation(client: AsyncClient, admin_auth_head
     )
     ids_b = [str(b["product_id"]) for b in resp_b.json()["data"]]
     assert product_id not in ids_b, "RLS: el stock de tenant_a no debe aparecer en tenant_b"
+
+
+@pytest.mark.asyncio
+async def test_admin_create_warehouse_autocrea_zonas(client: AsyncClient, admin_auth_headers, tenant_a):
+    """201: un almacén físico nace con sus zonas RECEIVING/DISPATCH/QUARANTINE."""
+    tid = tenant_a["id"]
+    code = f"WH-{uuid.uuid4().hex[:6].upper()}"
+
+    resp = await client.post(
+        f"/admin/tenants/{tid}/warehouses",
+        json={"code": code, "name": "Bodega Creada Desde Admin", "is_virtual": False},
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    wh = resp.json()
+    assert wh["code"] == code
+    assert wh["is_virtual"] is False
+
+    zonas = await client.get(
+        f"/admin/tenants/{tid}/warehouses/{wh['id']}/zones",
+        headers=admin_auth_headers,
+    )
+    tipos = {z["zone_type"] for z in zonas.json()}
+    assert {"RECEIVING", "DISPATCH", "QUARANTINE"} <= tipos
+
+    # El almacén recién creado aparece en el listado que consume el portal
+    listado = await client.get(f"/admin/tenants/{tid}/warehouses", headers=admin_auth_headers)
+    assert any(w["id"] == wh["id"] and w["code"] == code for w in listado.json())
+
+
+@pytest.mark.asyncio
+async def test_admin_create_warehouse_codigo_duplicado(client: AsyncClient, admin_auth_headers, tenant_a):
+    """409: el código de almacén es único dentro del tenant."""
+    tid = tenant_a["id"]
+    payload = {"code": f"WH-{uuid.uuid4().hex[:6].upper()}", "name": "Bodega Repetida"}
+
+    primero = await client.post(
+        f"/admin/tenants/{tid}/warehouses", json=payload, headers=admin_auth_headers
+    )
+    assert primero.status_code == 201
+
+    segundo = await client.post(
+        f"/admin/tenants/{tid}/warehouses", json=payload, headers=admin_auth_headers
+    )
+    assert segundo.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_admin_create_zone(client: AsyncClient, admin_auth_headers, tenant_a):
+    """201: crear una zona adicional en un almacén existente."""
+    tid = tenant_a["id"]
+    wid, _ = await _setup_warehouse_and_zone(tid)
+    zcode = f"ZONA-{uuid.uuid4().hex[:6].upper()}"
+
+    resp = await client.post(
+        f"/admin/tenants/{tid}/warehouses/{wid}/zones",
+        json={"code": zcode, "name": "Zona de Almacenamiento", "zone_type": "STORAGE"},
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    zona = resp.json()
+    assert zona["code"] == zcode
+    assert zona["zone_type"] == "STORAGE"
+    assert str(zona["warehouse_id"]) == wid
+
+
+@pytest.mark.asyncio
+async def test_admin_create_warehouse_requires_super_admin(client: AsyncClient, auth_headers_a, tenant_a):
+    """403: un tenant_admin no puede crear almacenes por la vía admin."""
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/warehouses",
+        json={"code": "WH-NOPE", "name": "No debería crearse"},
+        headers=auth_headers_a,
+    )
+    assert resp.status_code == 403

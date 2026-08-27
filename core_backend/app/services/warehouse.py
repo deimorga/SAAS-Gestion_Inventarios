@@ -1,13 +1,19 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal, set_tenant_context
 from app.models.stock_balance import StockBalance
 from app.models.warehouse import Warehouse
 from app.models.zone import Zone
 from app.schemas.warehouse import WarehouseCreate, WarehouseUpdate, ZoneCreate, ZoneUpdate
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_WAREHOUSE_CODE = "PRINCIPAL"
 
 
 # ── Warehouse CRUD ────────────────────────────────────────────────────────────
@@ -104,6 +110,32 @@ async def update_warehouse(warehouse_id: str, body: WarehouseUpdate, db: AsyncSe
     await db.refresh(wh)
     return wh
 
+
+async def provision_default_warehouse(tenant_id: str) -> None:
+    """Crea el almacén inicial de un tenant recién dado de alta.
+
+    Sin al menos un almacén con zonas, el tenant puede crear productos pero no
+    registrar existencias. Abre su propia sesión con el contexto RLS del tenant:
+    las políticas de `warehouses` y `zones` no admiten el sentinel de super_admin,
+    así que no sirve la sesión de administración desde la que se crea el tenant.
+
+    El tenant ya está creado cuando se llama: si esto falla se registra y se sigue,
+    porque el almacén se puede crear después desde el portal.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            await set_tenant_context(session, tenant_id)
+            await create_warehouse(
+                body=WarehouseCreate(
+                    code=DEFAULT_WAREHOUSE_CODE,
+                    name="Bodega Principal",
+                    is_virtual=False,
+                ),
+                db=session,
+                tenant_id=tenant_id,
+            )
+    except Exception:
+        logger.exception("No se pudo crear el almacén por defecto del tenant %s", tenant_id)
 
 # ── Zone CRUD ─────────────────────────────────────────────────────────────────
 

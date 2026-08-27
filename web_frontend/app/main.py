@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any
 
 import httpx
@@ -56,6 +57,20 @@ def _info_row(label: str, value: str, copyable: bool = False) -> None:
                 icon="content_copy",
                 on_click=lambda v=value: ui.run_javascript(_copy_js(v)),
             ).props("flat dense size=xs").tooltip("Copiar")
+
+
+def _err_msg(ex: Exception) -> str:
+    """Extrae el `detail` del API; en errores de validación, el primer mensaje."""
+    if isinstance(ex, httpx.HTTPStatusError):
+        try:
+            detail = ex.response.json().get("detail")
+        except Exception:
+            detail = None
+        if isinstance(detail, list) and detail:
+            first = detail[0]
+            detail = first.get("msg") if isinstance(first, dict) else str(first)
+        return str(detail) if detail else f"HTTP {ex.response.status_code}"
+    return str(ex)
 
 
 def _tier_badge(tier: str) -> None:
@@ -491,6 +506,10 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 "📊 Gestionar Stock",
                 on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/stock"),
             ).classes("w-full mt-2").props('unelevated color="secondary"')
+            ui.button(
+                "🏭 Gestionar Almacenes",
+                on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/warehouses"),
+            ).classes("w-full mt-2").props('outline color="primary"')
 
     # ── API Keys ──────────────────────────────────────────────────────────────────
     ui.separator().classes("my-5")
@@ -1137,6 +1156,193 @@ async def page_stock(tenant_id: str) -> None:
                 ui.notify(f"Error cargando stock: {ex}", type="negative")
 
     await load_stock()
+
+
+# ─── Warehouses page ─────────────────────────────────────────────────────────
+
+ZONE_TYPES = {
+    "STORAGE": "Almacenamiento — stock disponible",
+    "PICKING": "Alistamiento — separación de pedidos",
+    "RECEIVING": "Recepción — mercancía que llega",
+    "DISPATCH": "Despacho — listo para salir",
+    "QUARANTINE": "Cuarentena — pendiente de inspección",
+    "TRANSIT": "Tránsito — entre almacenes",
+}
+
+_CODE_RE = re.compile(r"^[A-Za-z0-9\-_]+$")
+
+
+@ui.page("/tenants/{tenant_id}/warehouses")
+async def page_warehouses(tenant_id: str) -> None:
+    _guard()
+    ui.colors(primary="#1a56db")
+
+    with ui.row().classes("w-full items-center gap-3 mb-4"):
+        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}")).props("flat round")
+        ui.label("Almacenes").classes("text-2xl font-bold")
+
+    wh_container = ui.column().classes("w-full")
+
+    # ── Diálogo: nuevo almacén ────────────────────────────────────────────────
+    wh_dialog = ui.dialog().props("persistent")
+    with wh_dialog:
+        with ui.card().classes("w-[480px] p-6"):
+            ui.label("Nuevo Almacén").classes("text-xl font-bold mb-1")
+            ui.label(
+                "Un almacén físico nace con sus zonas de recepción, despacho y cuarentena "
+                "ya creadas: queda listo para registrar stock."
+            ).classes("text-sm text-gray-600 mb-4")
+
+            wh_code_in = ui.input("Código *", placeholder="BOG-01").classes("w-full")
+            ui.label("Solo letras, números, guion y guion bajo. No se puede cambiar después.").classes(
+                "text-xs text-gray-500"
+            )
+            wh_name_in = ui.input("Nombre *", placeholder="Bodega Principal Bogotá").classes("w-full mt-2")
+            wh_addr_in = ui.input("Dirección", placeholder="Calle 80 # 45-23, Bogotá").classes("w-full mt-2")
+            wh_virtual_in = ui.checkbox("Almacén virtual (lógico, sin ubicación física)").classes("mt-2")
+            ui.label("Los virtuales no reciben mercancía ni generan zonas automáticas.").classes(
+                "text-xs text-gray-500"
+            )
+            wh_err = ui.label("").classes("text-red-500 text-sm mt-1")
+
+            async def do_create_wh() -> None:
+                wh_err.set_text("")
+                code = (wh_code_in.value or "").strip()
+                name = (wh_name_in.value or "").strip()
+                if not code or not name:
+                    wh_err.set_text("Código y nombre son obligatorios.")
+                    return
+                if not _CODE_RE.match(code):
+                    wh_err.set_text("El código solo admite letras, números, guion y guion bajo.")
+                    return
+                payload = {
+                    "code": code,
+                    "name": name,
+                    "location_address": (wh_addr_in.value or "").strip() or None,
+                    "is_virtual": bool(wh_virtual_in.value),
+                }
+                try:
+                    await api.create_warehouse(_token(), tenant_id, payload)
+                    wh_dialog.close()
+                    ui.notify("Almacén creado.", type="positive")
+                    await load_warehouses()
+                except Exception as ex:
+                    wh_err.set_text(_err_msg(ex))
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=wh_dialog.close).props("flat")
+                ui.button("Crear", on_click=do_create_wh).props('unelevated color="primary"')
+
+    # ── Diálogo: nueva zona ───────────────────────────────────────────────────
+    zone_target: dict = {}
+    zone_dialog = ui.dialog().props("persistent")
+    with zone_dialog:
+        with ui.card().classes("w-[480px] p-6"):
+            ui.label("Nueva Zona").classes("text-xl font-bold mb-1")
+            zone_wh_label = ui.label("").classes("text-sm text-gray-600 mb-4")
+
+            zone_code_in = ui.input("Código *", placeholder="ZONA-A").classes("w-full")
+            zone_name_in = ui.input("Nombre *", placeholder="Zona de Almacenamiento General").classes("w-full mt-2")
+            zone_type_in = ui.select(ZONE_TYPES, label="Tipo *", value="STORAGE").classes("w-full mt-2")
+            zone_err = ui.label("").classes("text-red-500 text-sm mt-1")
+
+            async def do_create_zone() -> None:
+                zone_err.set_text("")
+                code = (zone_code_in.value or "").strip()
+                name = (zone_name_in.value or "").strip()
+                if not code or not name or not zone_type_in.value:
+                    zone_err.set_text("Código, nombre y tipo son obligatorios.")
+                    return
+                payload = {"code": code, "name": name, "zone_type": zone_type_in.value}
+                try:
+                    await api.create_zone(_token(), tenant_id, zone_target["id"], payload)
+                    zone_dialog.close()
+                    ui.notify("Zona creada.", type="positive")
+                    await load_warehouses()
+                except Exception as ex:
+                    zone_err.set_text(_err_msg(ex))
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=zone_dialog.close).props("flat")
+                ui.button("Crear", on_click=do_create_zone).props('unelevated color="primary"')
+
+    def open_wh_dialog() -> None:
+        wh_code_in.set_value("")
+        wh_name_in.set_value("")
+        wh_addr_in.set_value("")
+        wh_virtual_in.set_value(False)
+        wh_err.set_text("")
+        wh_dialog.open()
+
+    def open_zone_dialog(wh: dict) -> None:
+        zone_target.clear()
+        zone_target.update({"id": wh["id"]})
+        zone_wh_label.set_text(f"En el almacén: {wh['name']}")
+        zone_code_in.set_value("")
+        zone_name_in.set_value("")
+        zone_type_in.set_value("STORAGE")
+        zone_err.set_text("")
+        zone_dialog.open()
+
+    # ── Listado ───────────────────────────────────────────────────────────────
+    async def load_warehouses() -> None:
+        wh_container.clear()
+        with wh_container:
+            try:
+                warehouses = await api.list_warehouses(_token(), tenant_id)
+            except Exception as ex:
+                ui.notify(f"Error cargando almacenes: {_err_msg(ex)}", type="negative")
+                return
+
+            with ui.row().classes("w-full justify-between items-center mb-2"):
+                ui.label(f"{len(warehouses)} almacén(es)").classes("text-sm text-gray-500")
+                ui.button("+ Nuevo Almacén", on_click=open_wh_dialog).props('unelevated color="primary"')
+
+            if not warehouses:
+                with ui.card().classes("w-full p-8 text-center"):
+                    ui.icon("warehouse", size="4rem").classes("text-gray-300")
+                    ui.label("Sin almacenes").classes("text-gray-500 mt-2")
+                    ui.label(
+                        "Sin al menos un almacén no se puede registrar stock: los productos "
+                        "quedan creados pero sin existencias."
+                    ).classes("text-sm text-gray-400 mt-1")
+                return
+
+            zone_columns = [
+                {"name": "code", "label": "Código", "field": "code", "align": "left"},
+                {"name": "name", "label": "Nombre", "field": "name", "align": "left"},
+                {"name": "zone_type", "label": "Tipo", "field": "zone_type", "align": "center"},
+            ]
+
+            for wh in warehouses:
+                try:
+                    zones = await api.list_zones(_token(), tenant_id, wh["id"])
+                except Exception:
+                    zones = []
+
+                kind = "Virtual" if wh.get("is_virtual") else "Físico"
+                title = f"{wh['code']} — {wh['name']}  ·  {kind}  ·  {len(zones)} zona(s)"
+                with ui.expansion(title, icon="warehouse").classes(
+                    "w-full bg-white shadow-sm mb-2"
+                ).props("default-opened"):
+                    with ui.column().classes("w-full p-2 gap-2"):
+                        if wh.get("location_address"):
+                            ui.label(wh["location_address"]).classes("text-sm text-gray-500")
+                        with ui.row().classes("w-full justify-end"):
+                            ui.button(
+                                "+ Nueva Zona",
+                                on_click=lambda w=wh: open_zone_dialog(w),
+                            ).props('flat dense color="primary"')
+                        if zones:
+                            ui.table(columns=zone_columns, rows=zones, row_key="id").classes(
+                                "w-full shadow-none border-t"
+                            )
+                        else:
+                            ui.label("Este almacén no tiene zonas — no puede recibir stock todavía.").classes(
+                                "text-sm text-amber-600"
+                            )
+
+    await load_warehouses()
 
 
 # ─── Root redirect ────────────────────────────────────────────────────────────

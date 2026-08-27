@@ -593,6 +593,8 @@ Todos requieren JWT `super_admin`. Usan sesión con RLS del tenant específico (
 | `POST /admin/tenants/{id}/stock/adjustments` | Ajuste de stock (campo: `new_qty`) |
 | `GET /admin/tenants/{id}/warehouses` | Listar almacenes |
 | `GET /admin/tenants/{id}/warehouses/{wid}/zones` | Listar zonas |
+| `POST /admin/tenants/{id}/warehouses` | Crear almacén (físico ⇒ zonas automáticas) |
+| `POST /admin/tenants/{id}/warehouses/{wid}/zones` | Crear zona |
 
 **Archivos:** `app/api/admin/endpoints/admin_products.py`, `admin_stock.py`
 
@@ -640,6 +642,25 @@ Existen porque `/v1/auth/resend-activation` exige `tenant_admin` del mismo tenan
 - Ruff incluye `T20`: un `print()` en `app/` es error de lint.
 - **Pendiente conocido**: `check_expiring_api_keys` encola con `to_email=""`. Daba igual
   mientras la tarea no corriera; ahora corre a diario a las 08:00 UTC.
+
+## Cambios Recientes (2026-08-27 — Almacenes desde el portal)
+
+Un tenant recién creado no tenía ningún almacén, así que sus productos se creaban pero no
+podían recibir stock ("no hay almacenes para registrar el stock inicial") y no había forma
+de crear uno sin llamar al API a mano.
+
+- `create_tenant` aprovisiona un almacén `PRINCIPAL` (físico, con sus tres zonas) junto con
+  el tenant y su admin — `provision_default_warehouse` en `app/services/warehouse.py`.
+  Abre **su propia sesión** con el contexto RLS del tenant: las políticas de `warehouses` y
+  `zones` no incluyen el sentinel de super_admin, así que la sesión de administración desde
+  la que se crea el tenant no puede insertar en esas tablas. Si falla, se registra y se sigue:
+  el tenant ya está creado y el almacén se puede crear luego desde el portal.
+- Portal: `/tenants/{id}/warehouses` — listado con zonas, crear almacén y crear zona.
+- Los `GET` de almacenes/zonas del admin devuelven también `code`, `is_virtual` e `is_active`.
+
+**Pendiente detectado (no corregido)**: nada escribe la clave `tenant_tier:<id>` en Redis, y
+`deps.py` hace `await redis.get(tier_key) or "STARTER"`. Resultado: **todos** los tenants
+—ENTERPRISE incluidos— quedan limitados a 60 req/min.
 
 ## Glossary
 

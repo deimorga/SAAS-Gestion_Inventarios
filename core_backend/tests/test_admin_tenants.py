@@ -3,6 +3,7 @@ Tests de F-3 — Admin Tenants (RF-037).
 
 Escenarios:
   - Crear tenant: éxito, slug auto-generado, slug explícito en conflicto, email duplicado
+  - Crear tenant: aprovisiona el almacén PRINCIPAL con sus zonas
   - Listar tenants: paginación básica
   - Obtener tenant: éxito y 404
   - Actualizar tenant: suspensión, reactivación, cambio de tier
@@ -280,3 +281,37 @@ async def test_suspended_tenant_user_cannot_login(client: AsyncClient, admin_aut
         json={"is_active": True},
         headers=admin_auth_headers,
     )
+
+
+@pytest.mark.asyncio
+async def test_create_tenant_provisiona_almacen_por_defecto(client: AsyncClient, admin_auth_headers):
+    """201: el tenant nace con un almacén PRINCIPAL y sus zonas operativas.
+
+    Sin almacén, el tenant puede crear productos pero no registrar existencias.
+    """
+    import uuid
+    email = f"admin-{uuid.uuid4().hex[:8]}@warehoused.com"
+    resp = await client.post(
+        "/admin/tenants",
+        json=_tenant_payload(name="Warehoused Co", admin_email=email),
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    tenant_id = resp.json()["id"]
+
+    almacenes = await client.get(
+        f"/admin/tenants/{tenant_id}/warehouses", headers=admin_auth_headers
+    )
+    data = almacenes.json()
+    assert len(data) == 1, "el tenant debe nacer con exactamente un almacén"
+    assert data[0]["code"] == "PRINCIPAL"
+    assert data[0]["is_virtual"] is False
+
+    zonas = await client.get(
+        f"/admin/tenants/{tenant_id}/warehouses/{data[0]['id']}/zones",
+        headers=admin_auth_headers,
+    )
+    tipos = {z["zone_type"] for z in zonas.json()}
+    assert {"RECEIVING", "DISPATCH", "QUARANTINE"} <= tipos
+
+    await _delete_tenant(tenant_id)

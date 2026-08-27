@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.services.activation import dispatch_activation_email, generate_activation_token
+from app.services.warehouse import provision_default_warehouse
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.admin_tenant import (
@@ -81,6 +82,9 @@ async def create_tenant(
     await db.commit()
     await db.refresh(tenant)
     await db.refresh(admin_user)
+
+    # Almacén inicial: sin él el tenant puede crear productos pero no darles stock.
+    await provision_default_warehouse(tenant_id)
 
     # Token de activación almacenado en Redis (consumido por F-4 /auth/activate)
     activation_token = await generate_activation_token(admin_user.id, redis)
