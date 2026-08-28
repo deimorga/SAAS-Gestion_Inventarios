@@ -242,9 +242,17 @@ def test_las_colas_del_compose_incluyen_la_por_defecto():
 
     from app.tasks import WORKER_DEFAULT_QUEUE
 
-    raiz = pathlib.Path(__file__).resolve().parents[2]
-    composes = sorted(raiz.glob("docker-compose*.yml"))
-    assert composes, "no encontré ficheros docker-compose"
+    # Se busca hacia arriba en lugar de asumir la profundidad: la suite corre
+    # tanto desde el repo completo como con solo core_backend montado en /src,
+    # y en ese segundo caso los compose no están al alcance.
+    composes: list[pathlib.Path] = []
+    for carpeta in pathlib.Path(__file__).resolve().parents:
+        composes = sorted(carpeta.glob("docker-compose*.yml"))
+        if composes:
+            break
+
+    if not composes:
+        pytest.skip("los docker-compose no están montados en este entorno")
 
     for fichero in composes:
         for colas in re.findall(r"celery -A app\.tasks worker[^\n]*-Q ([\w,]+)", fichero.read_text()):
