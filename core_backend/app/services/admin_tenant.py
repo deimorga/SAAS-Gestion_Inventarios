@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.services.activation import dispatch_activation_email, generate_activation_token
-from app.services.warehouse import provision_default_warehouse
+from app.services.warehouse import DEFAULT_WAREHOUSE_CODE, provision_default_warehouse
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.admin_tenant import (
@@ -32,8 +32,41 @@ async def create_tenant(
     created_by_user_id: str,
     db: AsyncSession,
     redis: aioredis.Redis,
+    *,
+    warehouse_code: str = DEFAULT_WAREHOUSE_CODE,
+    warehouse_name: str = "Bodega Principal",
+    warehouse_address: str | None = None,
 ) -> TenantCreateResponse:
     slug = request.slug if request.slug else _slugify(request.name)
+
+    if request.external_id and not request.external_provider:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="external_id requiere external_provider",
+        )
+    if request.external_provider and request.external_id:
+        result = await db.execute(
+            select(Tenant).where(
+                Tenant.external_provider == request.external_provider,
+                Tenant.external_id == request.external_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Ya existe un tenant para {request.external_provider}:{request.external_id} "
+                    f"(tenant_id={existing.id})"
+                ),
+            )
+    if request.parent_tenant_id:
+        parent = await db.execute(select(Tenant).where(Tenant.id == str(request.parent_tenant_id)))
+        if parent.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="parent_tenant_id no corresponde a ningún tenant",
+            )
 
     result = await db.execute(select(Tenant).where(Tenant.slug == slug))
     if result.scalar_one_or_none() is not None:
@@ -62,6 +95,10 @@ async def create_tenant(
         subscription_tier=request.subscription_tier,
         config={},
         is_active=True,
+        tax_id=request.tax_id,
+        external_provider=request.external_provider,
+        external_id=request.external_id,
+        parent_tenant_id=str(request.parent_tenant_id) if request.parent_tenant_id else None,
         created_at=now,
         updated_at=now,
     )
@@ -84,7 +121,9 @@ async def create_tenant(
     await db.refresh(admin_user)
 
     # Almacén inicial: sin él el tenant puede crear productos pero no darles stock.
-    await provision_default_warehouse(tenant_id)
+    warehouse = await provision_default_warehouse(
+        tenant_id, code=warehouse_code, name=warehouse_name, location_address=warehouse_address
+    )
 
     # Token de activación almacenado en Redis (consumido por F-4 /auth/activate)
     activation_token = await generate_activation_token(admin_user.id, redis)
@@ -109,6 +148,7 @@ async def create_tenant(
         updated_at=tenant.updated_at,
         admin_user_id=admin_user.id,
         admin_email=admin_user.email,
+        warehouse_id=warehouse.id if warehouse else None,
     )
 
 

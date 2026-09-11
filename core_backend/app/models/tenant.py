@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,15 @@ class Tenant(Base, TimestampMixin):
     subscription_tier: Mapped[str] = mapped_column(String(50), nullable=False, default="STARTER")
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Referencia externa: quién aprovisionó este tenant y con qué id lo conoce
+    # (p. ej. una sede creada desde Appits). Migración 014.
+    external_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tax_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    parent_tenant_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True
+    )
 
     users = relationship("User", back_populates="tenant", lazy="noload")
     api_keys = relationship("ApiKey", back_populates="tenant", lazy="noload")

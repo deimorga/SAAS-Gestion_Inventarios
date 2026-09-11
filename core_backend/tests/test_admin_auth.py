@@ -22,17 +22,35 @@ from tests.conftest import _TestSession, _delete_user_by_id
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_residual_super_admins():
-    """Elimina cualquier super_admin residual de la DB antes de cada test.
+    """Deja la DB sin super_admins durante cada test y los restaura al terminar.
 
-    Esto evita colisiones causadas por datos pre-sembrados en la DB de desarrollo
-    compartida (e.g., super_admins creados por seed_demo.py o sesiones previas).
+    El bootstrap (`/admin/auth/register`) solo funciona si no existe ningún
+    super_admin, y los tests corren contra la DB de desarrollo compartida. Antes
+    este fixture los borraba sin más y se llevaba por delante la cuenta real con
+    la que se entra al portal local. Ahora los guarda y los vuelve a insertar.
     """
     async with _TestSession() as session:
-        await session.execute(
-            text("DELETE FROM users WHERE role = 'super_admin'")
-        )
+        rows = (await session.execute(
+            text("SELECT * FROM users WHERE role = 'super_admin'")
+        )).mappings().all()
+        await session.execute(text("DELETE FROM users WHERE role = 'super_admin'"))
         await session.commit()
     yield
+    if not rows:
+        return
+    async with _TestSession() as session:
+        # Los tests crean los suyos con sa-...@micronuba.com; eliminarlos y
+        # devolver los que había, tal cual estaban.
+        await session.execute(text("DELETE FROM users WHERE role = 'super_admin'"))
+        cols = list(rows[0].keys())
+        await session.execute(
+            text(
+                f"INSERT INTO users ({', '.join(cols)}) "
+                f"VALUES ({', '.join(':' + c for c in cols)})"
+            ),
+            [dict(r) for r in rows],
+        )
+        await session.commit()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

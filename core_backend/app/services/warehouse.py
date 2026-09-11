@@ -111,7 +111,12 @@ async def update_warehouse(warehouse_id: str, body: WarehouseUpdate, db: AsyncSe
     return wh
 
 
-async def provision_default_warehouse(tenant_id: str) -> None:
+async def provision_default_warehouse(
+    tenant_id: str,
+    code: str = DEFAULT_WAREHOUSE_CODE,
+    name: str = "Bodega Principal",
+    location_address: str | None = None,
+) -> Warehouse | None:
     """Crea el almacén inicial de un tenant recién dado de alta.
 
     Sin al menos un almacén con zonas, el tenant puede crear productos pero no
@@ -119,16 +124,17 @@ async def provision_default_warehouse(tenant_id: str) -> None:
     las políticas de `warehouses` y `zones` no admiten el sentinel de super_admin,
     así que no sirve la sesión de administración desde la que se crea el tenant.
 
-    El tenant ya está creado cuando se llama: si esto falla se registra y se sigue,
-    porque el almacén se puede crear después desde el portal.
+    El tenant ya está creado cuando se llama: si esto falla se registra y se
+    devuelve None, porque el almacén se puede crear después desde el portal.
     """
     try:
         async with AsyncSessionLocal() as session:
             await set_tenant_context(session, tenant_id)
-            await create_warehouse(
+            return await create_warehouse(
                 body=WarehouseCreate(
-                    code=DEFAULT_WAREHOUSE_CODE,
-                    name="Bodega Principal",
+                    code=code,
+                    name=name,
+                    location_address=location_address,
                     is_virtual=False,
                 ),
                 db=session,
@@ -136,6 +142,8 @@ async def provision_default_warehouse(tenant_id: str) -> None:
             )
     except Exception:
         logger.exception("No se pudo crear el almacén por defecto del tenant %s", tenant_id)
+        return None
+
 
 # ── Zone CRUD ─────────────────────────────────────────────────────────────────
 

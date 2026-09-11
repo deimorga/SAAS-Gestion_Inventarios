@@ -18,6 +18,14 @@ class TenantCreate(BaseModel):
     )
     admin_email: EmailStr
     admin_full_name: str = Field(..., min_length=2, max_length=255)
+    tax_id: str | None = Field(None, max_length=50, description="NIT / identificación fiscal.")
+
+    # Referencia externa (migración 014): quién aprovisiona el tenant y con qué id.
+    external_provider: str | None = Field(None, max_length=50, pattern=r"^[a-z0-9_-]+$")
+    external_id: str | None = Field(None, max_length=100)
+    parent_tenant_id: UUID | None = Field(
+        None, description="Tenant del que depende (p. ej. el taller principal de una sede)."
+    )
 
 
 class TenantUpdate(BaseModel):
@@ -36,6 +44,10 @@ class TenantResponse(BaseModel):
     subscription_tier: str
     is_active: bool
     config: dict
+    tax_id: str | None = None
+    external_provider: str | None = None
+    external_id: str | None = None
+    parent_tenant_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -45,6 +57,7 @@ class TenantResponse(BaseModel):
 class TenantCreateResponse(TenantResponse):
     admin_user_id: UUID
     admin_email: str
+    warehouse_id: UUID | None = None
 
 
 class TenantListResponse(BaseModel):

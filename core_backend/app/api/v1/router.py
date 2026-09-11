@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, auth_activate, api_keys, tenant, audit_logs, products, categories,
     warehouses, reports, reservations, webhooks, bulk, cycle_counts,
-    suppliers, channel_allocations, users,
+    suppliers, channel_allocations, users, platform,
 )
 from app.api.v1.endpoints.batches import router as batches_router, serials_router
 from app.api.v1.endpoints.bins import router as bins_router
@@ -33,3 +33,4 @@ router.include_router(suppliers.router)
 router.include_router(batches_router)
 router.include_router(serials_router)
 router.include_router(channel_allocations.router)
+router.include_router(platform.router)

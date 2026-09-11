@@ -2,6 +2,10 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings
 
+# UUID fijo del tenant interno de MicroNuba (sembrado en la migración 012).
+# Es el único tenant cuyas API keys pueden llevar el scope PLATFORM.
+MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+
 
 class Settings(BaseSettings):
     APP_ENV: str = "development"

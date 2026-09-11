@@ -558,6 +558,9 @@ async def page_tenant_detail(tenant_id: str) -> None:
         "READ_INVENTORY", "WRITE_INVENTORY", "READ_CATALOG",
         "WRITE_CATALOG", "MANAGE_WAREHOUSES", "MANAGE_RESERVATIONS", "ADMIN",
     ]
+    # PLATFORM solo se puede emitir en el tenant interno: aprovisiona sedes desde Appits
+    if str(tenant_id) == "00000000-0000-0000-0000-000000000001":
+        ALL_SCOPES.append("PLATFORM")
     create_key_dialog = ui.dialog().props("persistent")
     with create_key_dialog:
         with ui.card().classes("w-[440px] p-6"):

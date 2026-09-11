@@ -16,6 +16,7 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import MICRONUBA_TENANT_ID
 from app.core.database import (
     SUPER_ADMIN_SENTINEL,
     AsyncSessionLocal,
@@ -33,8 +34,6 @@ from app.models.api_key import ApiKey
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# UUID fijo del tenant interno — debe coincidir con la migración 012
-MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 # Alias retrocompatible; la fuente de verdad vive en app.core.database
 _SUPER_ADMIN_SENTINEL = SUPER_ADMIN_SENTINEL
 
@@ -209,6 +208,27 @@ require_catalog_read = require_roles("tenant_admin", "super_admin", "inventory_m
 require_catalog_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
 require_inventory_read = require_roles("tenant_admin", "super_admin", "inventory_manager", "viewer")
 require_inventory_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
+
+
+# ── Guard de plataforma (Appits y similares) ──────────────────────────────
+
+async def require_platform(
+    auth: AuthContext = Depends(get_current_auth),
+) -> AuthContext:
+    """Solo una API key del tenant interno con scope PLATFORM.
+
+    El scope PLATFORM no figura en `_API_KEY_SCOPE_ROLES` a propósito: una key de
+    plataforma aprovisiona tenants pero no puede leer ni escribir datos de ninguno.
+    Exigir además el tenant interno evita que una key con ese scope emitida por
+    error en otro tenant tenga efecto.
+    """
+    if (
+        auth.auth_type != "api_key"
+        or "PLATFORM" not in auth.scopes
+        or auth.tenant_id != MICRONUBA_TENANT_ID
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+    return auth
 
 
 # ── Guard exclusivo super_admin ────────────────────────────────────────────

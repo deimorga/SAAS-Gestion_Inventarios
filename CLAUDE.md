@@ -43,7 +43,7 @@ core_backend/                   # FastAPI backend
 │       ├── security.py       # JWT, API key, password hashing
 │       ├── redis_client.py   # Redis connection pool
 │       └── exceptions.py     # Custom exception handlers
-├── alembic/                  # Database migrations (13 revisions)
+├── alembic/                  # Database migrations (14 revisions)
 ├── tests/                    # 23+ test modules (RLS isolation, auth, etc.)
 ├── scripts/                  # Utilities (export_openapi.py)
 ├── requirements.txt          # Python dependencies
@@ -301,7 +301,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 
 ### Alembic Migrations
 
-13 revisions in `core_backend/alembic/versions/`:
+14 revisions in `core_backend/alembic/versions/`:
 1. **001** — Initial schema
 2. **002** — Catalog enhancements
 3. **003** — Inventory (transactions, ledgers, reservations)
@@ -315,6 +315,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 11. **011** — Channel allocations
 12. **012** — Admin bootstrap & RLS policies
 13. **013** — `sale_price` (Numeric 18,4, nullable) en tabla `products`
+14. **014** — `tenants.external_provider/external_id/parent_tenant_id/tax_id` — sedes aprovisionadas desde Appits
 
 **Migration Commands**:
 ```bash
@@ -661,6 +662,33 @@ de crear uno sin llamar al API a mano.
 **Pendiente detectado (no corregido)**: nada escribe la clave `tenant_tier:<id>` en Redis, y
 `deps.py` hace `await redis.get(tier_key) or "STARTER"`. Resultado: **todos** los tenants
 —ENTERPRISE incluidos— quedan limitados a 60 req/min.
+
+## Cambios Recientes (2026-09-11 — Sedes desde Appits: `/v1/platform/*`)
+
+Una sede creada en Appits (Gestión-Talleres) debe ser un **tenant propio** en Inventarios.
+Antes eran tres pasos manuales en el panel; ahora Appits lo hace en una llamada.
+Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `POST /v1/platform/tenants` | Tenant + admin + almacén físico con zonas + API key de la sede. Devuelve `{tenant_id, warehouse, api_key}` |
+| `GET /v1/platform/tenants/{id}` | Info de una sede (solo tenants aprovisionados por plataforma; los manuales → 404) |
+| `GET /v1/platform/tenants/by-external/{provider}/{external_id}` | Buscar por id de Appits (tras un 409) |
+| `DELETE /v1/platform/tenants/{id}` | Baja lógica: `is_active=false` + revoca todas sus API keys. No borra inventario |
+
+- **Credencial**: API key del tenant interno con scope **`PLATFORM`** (`require_platform` en
+  `deps.py`). Ese scope no está en `_API_KEY_SCOPE_ROLES` a propósito: aprovisiona tenants pero
+  no lee ni escribe datos de ninguno. `create_api_key` rechaza emitirlo fuera del tenant interno.
+- **Migración 014**: `external_provider`, `external_id`, `parent_tenant_id`, `tax_id` en `tenants`,
+  con índice único parcial `(external_provider, external_id)` → reintentos dan 409, no duplicados.
+- `create_tenant` acepta ahora esos campos y el código/nombre del almacén inicial, y devuelve
+  `warehouse_id`. `provision_default_warehouse` devuelve el `Warehouse` (o `None`).
+- `MICRONUBA_TENANT_ID` vive en `app/core/config.py` (antes duplicado en `deps.py` y `admin_auth.py`).
+- **Fix**: `AuditLogEntry.action` pasó de `Literal["CREATE","UPDATE","DELETE"]` a `str`. El panel
+  escribía `CREATE_BY_ADMIN` al crear API keys y `/v1/audit-logs` devolvía 500 en esos tenants.
+- **Fix tests**: el fixture autouse de `test_admin_auth.py` borraba **todos** los super_admins de
+  la BD de desarrollo (incluida la cuenta real del portal local) en cada `pytest`. Ahora los
+  guarda y los restaura.
 
 ## Glossary
 

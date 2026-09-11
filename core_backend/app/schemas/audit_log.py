@@ -15,7 +15,10 @@ class AuditLogEntry(BaseModel):
     id: UUID
     entity: str
     entity_id: UUID
-    action: Literal["CREATE", "UPDATE", "DELETE"]
+    # Normalmente CREATE / UPDATE / DELETE. Se deja abierto porque ya hay filas
+    # históricas con otros valores (p. ej. CREATE_BY_ADMIN) y un Literal las
+    # convertía en un 500 al listar.
+    action: str
     old_values: dict | None
     new_values: dict
     performed_by: PerformerInfo

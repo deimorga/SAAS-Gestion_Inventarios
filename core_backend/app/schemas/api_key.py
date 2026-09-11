@@ -15,6 +15,9 @@ class ApiKeyScope(str, Enum):
     - `MANAGE_WAREHOUSES`: Crear y administrar almacenes, zonas y bins.
     - `MANAGE_RESERVATIONS`: Crear, confirmar y liberar reservas de stock.
     - `ADMIN`: Acceso completo — incluye gestión de usuarios y API Keys del tenant.
+    - `PLATFORM`: Aprovisionar tenants (sedes) en nombre de una plataforma externa
+      vía `/v1/platform/*`. Solo puede emitirse en el tenant interno de MicroNuba y
+      **no** da acceso a datos de ningún tenant.
     """
 
     READ_INVENTORY = "READ_INVENTORY"
@@ -24,6 +27,7 @@ class ApiKeyScope(str, Enum):
     MANAGE_WAREHOUSES = "MANAGE_WAREHOUSES"
     MANAGE_RESERVATIONS = "MANAGE_RESERVATIONS"
     ADMIN = "ADMIN"
+    PLATFORM = "PLATFORM"
 
 
 class ApiKeyCreate(BaseModel):

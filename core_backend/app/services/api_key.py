@@ -5,9 +5,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import MICRONUBA_TENANT_ID
 from app.core.security import generate_api_key_pair
 from app.models.api_key import ApiKey
-from app.schemas.api_key import ApiKeyCreate, ApiKeyCreateResponse, ApiKeyResponse
+from app.schemas.api_key import ApiKeyCreate, ApiKeyCreateResponse, ApiKeyResponse, ApiKeyScope
 from app.schemas.common import PaginatedResponse, PaginationMeta
 
 
@@ -44,6 +45,12 @@ async def create_api_key(
     db: AsyncSession,
     tenant_id: str,
 ) -> ApiKeyCreateResponse:
+    if ApiKeyScope.PLATFORM in body.scopes and tenant_id != MICRONUBA_TENANT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El scope PLATFORM solo puede emitirse en el tenant interno de MicroNuba",
+        )
+
     key_id, key_secret, key_hash = generate_api_key_pair()
     now = datetime.now(timezone.utc)
 

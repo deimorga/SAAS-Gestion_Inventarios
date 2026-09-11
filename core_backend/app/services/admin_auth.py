@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import MICRONUBA_TENANT_ID, settings
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -17,7 +17,6 @@ from app.models.user import User
 from app.schemas.admin_auth import AdminLoginResponse, AdminRegisterRequest
 from app.schemas.auth import UserRole, UserSummary
 
-MICRONUBA_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 async def register_super_admin(

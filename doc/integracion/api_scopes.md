@@ -8,7 +8,7 @@ Las API Keys se crean vía `POST /v1/api-keys` usando un JWT de sesión con rol 
 
 ---
 
-## Los 7 Scopes disponibles
+## Los 8 Scopes disponibles
 
 | Scope | Descripción | Operaciones que habilita |
 |---|---|---|
@@ -19,6 +19,7 @@ Las API Keys se crean vía `POST /v1/api-keys` usando un JWT de sesión con rol 
 | `MANAGE_WAREHOUSES` | Gestión de almacenes | Crear/editar almacenes, zonas, bins; bloquear/desbloquear ubicaciones |
 | `MANAGE_RESERVATIONS` | Gestión de reservas | Crear, confirmar y cancelar reservas; gestionar cuotas por canal |
 | `ADMIN` | Administración del tenant | Gestión de API Keys y usuarios del tenant (solo `tenant_admin`) |
+| `PLATFORM` | Aprovisionamiento de sedes | `/v1/platform/*`: crear, consultar y dar de baja tenants desde una plataforma externa (Appits). Solo en el tenant interno de MicroNuba; **no** da acceso a datos de ningún tenant. Ver [plataforma_sedes.md](plataforma_sedes.md) |
 
 ---
 
