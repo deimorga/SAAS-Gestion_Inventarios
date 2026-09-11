@@ -145,3 +145,21 @@ class PlatformTenantDeactivated(BaseModel):
     tenant_id: UUID
     is_active: bool
     api_keys_revoked: int
+
+
+# ── Alta de sede desde el panel de administración ─────────────────────────────
+
+PANEL_PROVIDER = "panel"
+
+
+class SedeCreate(BaseModel):
+    """Lo que pide el panel para crear una sede de un tenant. El tenant padre va
+    en la ruta; `external_id` es opcional porque la sede no viene de Appits."""
+
+    name: str = Field(..., min_length=2, max_length=255)
+    tax_id: str | None = Field(None, max_length=50)
+    admin_email: EmailStr
+    admin_full_name: str = Field(..., min_length=2, max_length=255)
+    external_id: str | None = Field(None, max_length=100, description="Id en Appits, si ya se conoce.")
+    warehouse: PlatformWarehouseSpec = Field(default_factory=PlatformWarehouseSpec)
+    api_key_name: str = Field("Appits", min_length=3, max_length=100)

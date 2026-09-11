@@ -259,7 +259,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 **Pages implemented:**
 - `/login` — Super admin login
 - `/tenants` — List with view/suspend buttons per row
-- `/tenants/{id}` — Detail with Acciones: Suspender, Gestionar Productos, Gestionar Stock
+- `/tenants/{id}` — Detail with Acciones: Suspender, Gestionar Productos, Gestionar Stock, Gestionar Almacenes; sección Sedes; API Keys
 - `/tenants/{id}/products` — CRUD productos (SKU, nombre, precio venta, UOM, descripción)
 - `/tenants/{id}/stock` — Ver saldos, entrada de stock, ajuste por fila, eliminar (ajuste a 0)
 
@@ -675,7 +675,11 @@ Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
 | `GET /v1/platform/tenants/{id}` | Info de una sede (solo tenants aprovisionados por plataforma; los manuales → 404) |
 | `GET /v1/platform/tenants/by-external/{provider}/{external_id}` | Buscar por id de Appits (tras un 409) |
 | `DELETE /v1/platform/tenants/{id}` | Baja lógica: `is_active=false` + revoca todas sus API keys. No borra inventario |
+| `GET /admin/tenants/{id}/sedes` | Sedes (tenants hijos) de un tenant — super_admin |
+| `POST /admin/tenants/{id}/sedes` | Crear sede desde el panel: mismo aprovisionamiento, padre en la ruta. Sin `external_id` queda como `panel`; con él, como `appits` |
 
+- **Portal**: detalle del tenant → sección **Sedes** con **+ Nueva Sede** (muestra la key una vez) y
+  listado; la lista de tenants tiene columna Tipo (`Principal` / `↳ Sede de X`).
 - **Credencial**: API key del tenant interno con scope **`PLATFORM`** (`require_platform` en
   `deps.py`). Ese scope no está en `_API_KEY_SCOPE_ROLES` a propósito: aprovisiona tenants pero
   no lee ni escribe datos de ninguno. `create_api_key` rechaza emitirlo fuera del tenant interno.

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,12 +15,14 @@ from app.schemas.admin_tenant import (
 )
 from app.schemas.api_key import ApiKeyCreate, ApiKeyCreateResponse
 from app.schemas.common import PaginatedResponse
+from app.schemas.platform import PANEL_PROVIDER, PlatformTenantCreate, PlatformTenantCreated, SedeCreate
 from app.services.admin_tenant import (
     create_tenant,
     get_tenant,
     list_tenants,
     update_tenant,
 )
+from app.services import platform as platform_service
 from app.services.api_key import create_api_key
 from app.services.api_key_rotation import admin_list_tenant_api_keys, admin_revoke_api_key
 from app.services.audit import log_action
@@ -185,3 +189,66 @@ async def revoke_tenant_api_key(
     db: AsyncSession = Depends(get_admin_db),
 ):
     await admin_revoke_api_key(tenant_id, key_id, db)
+
+
+# ── Sedes (tenants hijos) ──────────────────────────────────────────────────
+
+@router.get(
+    "/{tenant_id}/sedes",
+    response_model=list[TenantResponse],
+    summary="Sedes de un tenant",
+    description="Tenants cuyo `parent_tenant_id` es este tenant. Cada sede es un tenant aparte, con catálogo y stock propios.",
+)
+async def list_tenant_sedes(
+    tenant_id: str,
+    _auth: AuthContext = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_admin_db),
+):
+    await get_tenant(tenant_id, db)
+    return [TenantResponse.model_validate(t) for t in await platform_service.list_children(tenant_id)]
+
+
+@router.post(
+    "/{tenant_id}/sedes",
+    response_model=PlatformTenantCreated,
+    status_code=201,
+    summary="Crear una sede de un tenant desde el panel",
+    description=(
+        "Mismo aprovisionamiento que `POST /v1/platform/tenants` (tenant aparte + admin + almacén "
+        "físico con zonas + API key), pero pedido por un super_admin desde el panel y con el "
+        "tenant padre en la ruta. Sin `external_id` la sede queda como creada desde el panel."
+    ),
+    responses={
+        404: {"description": "Tenant padre no encontrado"},
+        409: {"description": "`external_id` ya usado o `admin_email` ya registrado"},
+    },
+)
+async def create_tenant_sede(
+    tenant_id: str,
+    body: SedeCreate,
+    auth: AuthContext = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_admin_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    await get_tenant(tenant_id, db)
+    # Con external_id viene de Appits y se registra como tal; sin él, la sede se
+    # creó a mano y recibe un id propio para que el índice único siga aplicando.
+    if body.external_id:
+        provider, external_id = "appits", body.external_id
+    else:
+        provider, external_id = PANEL_PROVIDER, f"panel-{uuid4().hex[:12]}"
+    return await platform_service.provision_tenant(
+        PlatformTenantCreate(
+            name=body.name,
+            tax_id=body.tax_id,
+            admin_email=body.admin_email,
+            admin_full_name=body.admin_full_name,
+            external_provider=provider,
+            external_id=external_id,
+            parent_tenant_id=tenant_id,
+            warehouse=body.warehouse,
+            api_key_name=body.api_key_name,
+        ),
+        performed_by=platform_service.admin_user_performer(auth.user_id),
+        redis=redis,
+    )

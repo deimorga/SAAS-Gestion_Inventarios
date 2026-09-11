@@ -200,6 +200,16 @@ responde `409`, a propósito.
 
 ---
 
+## Crear una sede a mano (panel de administración)
+
+Para las sedes que no vengan de Appits, o para probar sin Appits: en el portal, detalle del
+tenant principal → sección **Sedes** → **+ Nueva Sede**. Hace exactamente lo mismo que
+`POST /v1/platform/tenants` (tenant aparte + admin + bodega + API key) y muestra la key una
+sola vez. Por debajo llama a `POST /admin/tenants/{id}/sedes` con el JWT del super_admin.
+
+Si en ese formulario se indica el *ID en Appits*, la sede queda registrada como `appits` y
+Appits la encuentra luego con `GET /v1/platform/tenants/by-external/appits/{id}`.
+
 ## Endpoints que ya existían y siguen igual
 
 Para operar la sede una vez creada, Appits usa exactamente lo mismo que usa hoy con cada

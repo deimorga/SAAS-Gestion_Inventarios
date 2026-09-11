@@ -259,3 +259,73 @@ async def test_key_platform_no_lee_datos_de_tenant(client: AsyncClient, platform
     for path in ("/v1/products", "/v1/warehouses", "/v1/stock/balances"):
         resp = await client.get(path, headers=platform_headers)
         assert resp.status_code == 403, f"{path}: {resp.status_code}"
+
+
+# ── Sedes desde el panel (super_admin) ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_panel_crea_sede_de_un_tenant(client: AsyncClient, admin_auth_headers, tenant_a):
+    """201: el super_admin crea una sede desde el panel; queda ligada al padre y aparece en su lista."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes",
+        json={
+            "name": f"Sede Panel {suffix}",
+            "admin_email": f"panel-{suffix}@tallerdemo.com",
+            "admin_full_name": "Admin Sede Panel",
+            "warehouse": {"name": "Bodega Panel"},
+        },
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    try:
+        assert body["parent_tenant_id"] == tenant_a["id"]
+        assert body["external_provider"] == "panel"
+        assert body["warehouse"]["name"] == "Bodega Panel"
+        assert body["api_key"]["key_secret"].startswith("mk_secret_")
+
+        listado = await client.get(f"/admin/tenants/{tenant_a['id']}/sedes", headers=admin_auth_headers)
+        assert listado.status_code == 200
+        assert [s["id"] for s in listado.json()] == [body["tenant_id"]]
+
+        # La sede es un tenant normal para el panel: se puede abrir su detalle
+        detalle = await client.get(f"/admin/tenants/{body['tenant_id']}", headers=admin_auth_headers)
+        assert detalle.status_code == 200
+        assert detalle.json()["parent_tenant_id"] == tenant_a["id"]
+    finally:
+        await _delete_tenant(body["tenant_id"])
+
+
+@pytest.mark.asyncio
+async def test_panel_crea_sede_con_id_de_appits(client: AsyncClient, admin_auth_headers, tenant_a):
+    """201: con external_id, la sede queda registrada como de Appits y se encuentra por ese id."""
+    suffix = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes",
+        json={
+            "name": f"Sede Appits {suffix}",
+            "admin_email": f"appits-{suffix}@tallerdemo.com",
+            "admin_full_name": "Admin Sede Appits",
+            "external_id": f"shop_{suffix}",
+        },
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    try:
+        assert body["external_provider"] == "appits"
+        assert body["external_id"] == f"shop_{suffix}"
+    finally:
+        await _delete_tenant(body["tenant_id"])
+
+
+@pytest.mark.asyncio
+async def test_panel_sede_padre_inexistente(client: AsyncClient, admin_auth_headers):
+    """404: no se puede crear una sede de un tenant que no existe."""
+    resp = await client.post(
+        f"/admin/tenants/{uuid.uuid4()}/sedes",
+        json={"name": "Huérfana", "admin_email": "x@y.com", "admin_full_name": "Nadie"},
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 404

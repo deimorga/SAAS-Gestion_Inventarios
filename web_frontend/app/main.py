@@ -344,9 +344,11 @@ async def page_tenants() -> None:
 
                 ui.label(f"{total} tenant(s) registrado(s)").classes("text-sm text-gray-500 mb-2")
 
+                names = {str(t["id"]): t["name"] for t in items}
                 columns = [
                     {"name": "name", "label": "Nombre", "field": "name", "align": "left", "sortable": True},
                     {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
+                    {"name": "kind", "label": "Tipo", "field": "kind_str", "align": "left"},
                     {"name": "tier", "label": "Tier", "field": "subscription_tier", "align": "center", "sortable": True},
                     {"name": "status", "label": "Estado", "field": "status_str", "align": "center"},
                     {"name": "created_at", "label": "Creado", "field": "created_str", "align": "center", "sortable": True},
@@ -358,6 +360,10 @@ async def page_tenants() -> None:
                         **t,
                         "status_str": "Activo" if t["is_active"] else "Suspendido",
                         "created_str": t["created_at"][:10],
+                        "kind_str": (
+                            f"↳ Sede de {names.get(str(t['parent_tenant_id']), '?')}"
+                            if t.get("parent_tenant_id") else "Principal"
+                        ),
                     }
                     for t in items
                 ]
@@ -434,6 +440,12 @@ async def page_tenant_detail(tenant_id: str) -> None:
 
     try:
         tenant = await api.get_tenant(_token(), tenant_id)
+        parent_name = ""
+        if tenant.get("parent_tenant_id"):
+            try:
+                parent_name = (await api.get_tenant(_token(), tenant["parent_tenant_id"]))["name"]
+            except Exception:
+                parent_name = tenant["parent_tenant_id"]
         all_keys = (await api.get_tenant_keys(_token(), tenant_id)).get("data", [])
         keys_data: dict = {"data": all_keys}
     except httpx.HTTPStatusError as e:
@@ -457,6 +469,14 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 _info_row("ID", str(tenant["id"]), copyable=True)
                 _info_row("Nombre", tenant["name"])
                 _info_row("Slug", tenant["slug"], copyable=True)
+                if tenant.get("tax_id"):
+                    _info_row("NIT", tenant["tax_id"])
+                if tenant.get("parent_tenant_id"):
+                    with ui.row().classes("items-center gap-2 w-full"):
+                        ui.label("Sede de").classes("text-xs font-semibold text-gray-500 uppercase w-36 shrink-0")
+                        ui.link(
+                            parent_name, f"/tenants/{tenant['parent_tenant_id']}"
+                        ).classes("text-sm text-primary")
                 _info_row("Creado", tenant["created_at"][:19].replace("T", " "))
 
         with ui.card().classes("w-64 p-5"):
@@ -510,6 +530,175 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 "🏭 Gestionar Almacenes",
                 on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/warehouses"),
             ).classes("w-full mt-2").props('outline color="primary"')
+
+    # ── Sedes ─────────────────────────────────────────────────────────────────────
+    # Cada sede es un tenant APARTE (catálogo y stock propios, aislados por RLS)
+    # que apunta a este tenant con parent_tenant_id. Se crea con todo listo:
+    # admin, bodega física con sus zonas y la API key para Appits.
+    ui.separator().classes("my-5")
+
+    sede_created: dict = {}
+
+    sede_result_dialog = ui.dialog().props("persistent")
+    with sede_result_dialog:
+        with ui.card().classes("w-[560px] p-6"):
+            ui.label("Sede creada").classes("text-lg font-bold text-green-600 mb-1")
+            ui.label(
+                "Copia la API key ahora — no podrás verla de nuevo. Es la que se pega en Appits para conectar esta sede."
+            ).classes("text-sm text-amber-600 mb-4")
+
+            @ui.refreshable
+            def sede_result_content() -> None:
+                d = sede_created
+                if not d:
+                    return
+                wh = d.get("warehouse", {})
+                key = d.get("api_key", {})
+                with ui.column().classes("w-full gap-2"):
+                    _info_row("Tenant ID", str(d.get("tenant_id", "")), copyable=True)
+                    _info_row("Nombre", d.get("name", ""))
+                    _info_row("Admin", d.get("admin_email", ""), copyable=True)
+                    _info_row("Bodega", f"{wh.get('code', '')} — {wh.get('name', '')}")
+                    _info_row("Bodega ID", str(wh.get("id", "")), copyable=True)
+                    _info_row("Zonas", ", ".join(z.get("zone_type", "") for z in wh.get("zones", [])))
+                    ui.separator().classes("my-2")
+                    ui.label("API Key de la sede (copia ahora):").classes(
+                        "text-xs font-semibold text-gray-500 uppercase"
+                    )
+                    with ui.card().classes("bg-gray-100 w-full p-3"):
+                        ui.label(key.get("key_secret", "")).classes(
+                            "font-mono text-sm break-all text-gray-900"
+                        )
+                    ui.button(
+                        "Copiar Key",
+                        icon="content_copy",
+                        on_click=lambda v=key.get("key_secret", ""): ui.run_javascript(_copy_js(v)),
+                    ).props("unelevated color=primary size=sm")
+
+            sede_result_content()
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button(
+                    "Ver sede",
+                    icon="open_in_new",
+                    on_click=lambda: (
+                        sede_result_dialog.close(),
+                        ui.navigate.to(f"/tenants/{sede_created.get('tenant_id')}"),
+                    ),
+                ).props("flat color=primary")
+                ui.button("Cerrar", on_click=sede_result_dialog.close).props('unelevated color="primary"')
+
+    sede_dialog = ui.dialog().props("persistent")
+    with sede_dialog:
+        with ui.card().classes("w-[480px] p-6"):
+            ui.label(f"Nueva sede de {tenant['name']}").classes("text-xl font-bold mb-1")
+            ui.label(
+                "La sede nace como tenant aparte: sus productos y su stock no se mezclan con los de "
+                f"{tenant['name']}. Se crea con su admin, su bodega y su API key."
+            ).classes("text-sm text-gray-600 mb-4")
+
+            sede_name_in = ui.input("Nombre de la sede *", placeholder="Sede Norte").classes("w-full")
+            sede_nit_in = ui.input("NIT", placeholder="900123456-7").classes("w-full mt-2")
+            sede_email_in = ui.input("Email del admin *", placeholder="sede.norte@taller.com").classes("w-full mt-2")
+            ui.label("Debe ser distinto al de cualquier otro tenant.").classes("text-xs text-gray-500")
+            sede_admin_in = ui.input("Nombre del admin *", placeholder="Carlos García").classes("w-full mt-2")
+            sede_wh_in = ui.input("Nombre de la bodega", placeholder="Bodega Sede Norte").classes("w-full mt-2")
+            sede_ext_in = ui.input("ID en Appits (opcional)", placeholder="shop_42").classes("w-full mt-2")
+            sede_err = ui.label("").classes("text-red-500 text-sm mt-1")
+
+            async def do_create_sede() -> None:
+                sede_err.set_text("")
+                if not sede_name_in.value or not sede_email_in.value or not sede_admin_in.value:
+                    sede_err.set_text("Nombre, email del admin y nombre del admin son obligatorios.")
+                    return
+                payload: dict = {
+                    "name": sede_name_in.value.strip(),
+                    "tax_id": (sede_nit_in.value or "").strip() or None,
+                    "admin_email": sede_email_in.value.strip(),
+                    "admin_full_name": sede_admin_in.value.strip(),
+                    "warehouse": {
+                        "code": "PRINCIPAL",
+                        "name": (sede_wh_in.value or "").strip() or f"Bodega {sede_name_in.value.strip()}",
+                    },
+                    "api_key_name": f"Appits — {sede_name_in.value.strip()}",
+                }
+                if (sede_ext_in.value or "").strip():
+                    payload["external_id"] = sede_ext_in.value.strip()
+                try:
+                    data = await api.create_sede(_token(), tenant_id, payload)
+                    sede_created.clear()
+                    sede_created.update(data)
+                    sede_dialog.close()
+                    sede_result_content.refresh()
+                    sede_result_dialog.open()
+                    await load_sedes()
+                except Exception as ex:
+                    sede_err.set_text(_err_msg(ex))
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=sede_dialog.close).props("flat")
+                ui.button("Crear Sede", on_click=do_create_sede).props('unelevated color="primary"')
+
+    def open_sede_dialog() -> None:
+        for inp in (sede_name_in, sede_nit_in, sede_email_in, sede_admin_in, sede_wh_in, sede_ext_in):
+            inp.set_value("")
+        sede_err.set_text("")
+        sede_dialog.open()
+
+    with ui.row().classes("w-full items-center justify-between mb-3"):
+        ui.label("Sedes").classes("text-lg font-bold")
+        ui.button("+ Nueva Sede", on_click=open_sede_dialog).props('unelevated color="primary"')
+
+    sedes_container = ui.column().classes("w-full")
+
+    async def load_sedes() -> None:
+        sedes_container.clear()
+        with sedes_container:
+            try:
+                sedes = await api.list_sedes(_token(), tenant_id)
+            except Exception as ex:
+                ui.notify(f"Error cargando sedes: {_err_msg(ex)}", type="negative")
+                return
+            if not sedes:
+                with ui.card().classes("w-full p-6 text-center"):
+                    ui.icon("store", size="3rem").classes("text-gray-300")
+                    ui.label("Sin sedes").classes("text-gray-500 mt-2")
+                    ui.label(
+                        "Una sede es un tenant aparte con su propio inventario, ligado a este tenant."
+                    ).classes("text-sm text-gray-400")
+                return
+            columns = [
+                {"name": "name", "label": "Nombre", "field": "name", "align": "left"},
+                {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
+                {"name": "external", "label": "Origen", "field": "external_str", "align": "left"},
+                {"name": "status", "label": "Estado", "field": "status_str", "align": "center"},
+                {"name": "actions", "label": "", "field": "id", "align": "center"},
+            ]
+            rows = [
+                {
+                    **s,
+                    "status_str": "Activa" if s["is_active"] else "Suspendida",
+                    "external_str": (
+                        f"Appits · {s['external_id']}" if s.get("external_provider") == "appits"
+                        else "Panel"
+                    ),
+                }
+                for s in sedes
+            ]
+            tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-sm")
+            tbl.add_slot("body-cell-status", """
+                <q-td :props="props">
+                    <q-badge :color="props.row.is_active ? 'positive' : 'grey'" :label="props.value" />
+                </q-td>
+            """)
+            tbl.add_slot("body-cell-actions", """
+                <q-td :props="props">
+                    <q-btn flat dense icon="open_in_new" color="primary" size="sm"
+                           @click="$parent.$emit('view', props.row)" />
+                </q-td>
+            """)
+            tbl.on("view", lambda e: ui.navigate.to(f"/tenants/{e.args['id']}"))
+
+    await load_sedes()
 
     # ── API Keys ──────────────────────────────────────────────────────────────────
     ui.separator().classes("my-5")

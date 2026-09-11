@@ -226,3 +226,15 @@ async def create_zone(token: str, tenant_id: str, warehouse_id: str, payload: di
         "POST", f"/admin/tenants/{tenant_id}/warehouses/{warehouse_id}/zones", token, json=payload
     )
     return r.json()
+
+
+# ── Sedes (tenants hijos) ────────────────────────────────────────────────────
+
+async def list_sedes(token: str, tenant_id: str) -> list[dict[str, Any]]:
+    r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/sedes", token)
+    return r.json()
+
+
+async def create_sede(token: str, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    r = await _authed_request("POST", f"/admin/tenants/{tenant_id}/sedes", token, json=payload)
+    return r.json()

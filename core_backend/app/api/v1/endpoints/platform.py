@@ -52,7 +52,9 @@ async def create_platform_tenant(
     auth: AuthContext = Depends(require_platform),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    return await platform_service.provision_tenant(body, platform_key_id=auth.user_id, redis=redis)
+    return await platform_service.provision_tenant(
+        body, performed_by=platform_service.platform_key_performer(auth.user_id), redis=redis
+    )
 
 
 @router.get(
@@ -99,4 +101,6 @@ async def deactivate_platform_tenant(
     tenant_id: str,
     auth: AuthContext = Depends(require_platform),
 ):
-    return await platform_service.deactivate_tenant(tenant_id, platform_key_id=auth.user_id)
+    return await platform_service.deactivate_tenant(
+        tenant_id, performed_by=platform_service.platform_key_performer(auth.user_id)
+    )

@@ -35,8 +35,12 @@ from app.services.api_key import create_api_key
 from app.services.audit import log_action
 
 
-def _performed_by(platform_key_id: str) -> dict:
+def platform_key_performer(platform_key_id: str) -> dict:
     return {"type": "api_key", "id": platform_key_id}
+
+
+def admin_user_performer(user_id: str) -> dict:
+    return {"type": "user", "id": user_id}
 
 
 async def _warehouse_with_zones(session: AsyncSession, tenant_id: str, wh) -> PlatformWarehouse:
@@ -63,9 +67,11 @@ async def _get_platform_tenant(session: AsyncSession, tenant_id: str) -> Tenant:
 
 async def provision_tenant(
     body: PlatformTenantCreate,
-    platform_key_id: str,
+    performed_by: dict,
     redis: aioredis.Redis,
 ) -> PlatformTenantCreated:
+    """`performed_by`: quién lo pide, para auditoría y `users.created_by` —
+    la API key de plataforma (Appits) o el super_admin desde el panel."""
     tenant_request = TenantCreate(
         name=body.name,
         subscription_tier=body.subscription_tier,
@@ -81,7 +87,7 @@ async def provision_tenant(
         await set_system_context(session)
         created = await create_tenant(
             tenant_request,
-            created_by_user_id=platform_key_id,
+            created_by_user_id=performed_by["id"],
             db=session,
             redis=redis,
             warehouse_code=body.warehouse.code,
@@ -123,7 +129,7 @@ async def provision_tenant(
                 "warehouse_id": str(wh.id),
                 "api_key_id": str(key.id),
             },
-            performed_by=_performed_by(platform_key_id),
+            performed_by=performed_by,
         )
 
     return PlatformTenantCreated(
@@ -185,7 +191,7 @@ async def get_tenant_by_external(provider: str, external_id: str) -> PlatformTen
     return await _tenant_info(tenant)
 
 
-async def deactivate_tenant(tenant_id: str, platform_key_id: str) -> PlatformTenantDeactivated:
+async def deactivate_tenant(tenant_id: str, performed_by: dict) -> PlatformTenantDeactivated:
     """Baja lógica: el tenant queda suspendido y sus API keys revocadas.
 
     Nunca se borra el inventario: si la sede se elimina por error en Appits, los
@@ -212,8 +218,19 @@ async def deactivate_tenant(tenant_id: str, platform_key_id: str) -> PlatformTen
             action="UPDATE",
             old_values={"is_active": True},
             new_values={"via": "platform", "is_active": False, "api_keys_revoked": revoked},
-            performed_by=_performed_by(platform_key_id),
+            performed_by=performed_by,
         )
         await session.commit()
 
     return PlatformTenantDeactivated(tenant_id=tenant_id, is_active=False, api_keys_revoked=revoked)
+
+
+async def list_children(parent_tenant_id: str) -> list[Tenant]:
+    """Sedes (tenants hijos) de un tenant, más recientes primero."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Tenant)
+            .where(Tenant.parent_tenant_id == parent_tenant_id)
+            .order_by(Tenant.created_at.desc())
+        )
+        return list(result.scalars().all())
