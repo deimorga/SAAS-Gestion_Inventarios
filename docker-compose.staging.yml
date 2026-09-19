@@ -161,6 +161,16 @@ services:
     image: axllent/mailpit:latest
     container_name: inv-mailpit-staging
     restart: unless-stopped
+    # MP_UI_AUTH protege la interfaz y la API de Mailpit. Se inyecta por env_file
+    # y NO por `environment:`: la interpolacion de docker-compose reinterpreta los
+    # `$` del hash bcrypt y lo corrompe sin dar error. Fichero propio con una sola
+    # variable, para no meter el entorno completo de la app en este contenedor.
+    env_file:
+      # `format: raw` es obligatorio: sin el, docker compose interpola los `$` del
+      # hash bcrypt TAMBIEN desde env_file y lo deja mas corto, produciendo un 401
+      # que nadie puede abrir. Verificado el 2026-09-11: 70 caracteres -> 50.
+      - path: .env.mailpit
+        format: raw
     networks:
       - micronuba_public
       - inv_app_staging
