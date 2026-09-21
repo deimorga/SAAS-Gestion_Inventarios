@@ -679,7 +679,8 @@ Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
 | `POST /admin/tenants/{id}/sedes` | Crear sede desde el panel: mismo aprovisionamiento, padre en la ruta. Sin `external_id` queda como `panel`; con él, como `appits` |
 
 - **Portal**: detalle del tenant → sección **Sedes** con **+ Nueva Sede** (muestra la key una vez) y
-  listado; la lista de tenants tiene columna Tipo (`Principal` / `↳ Sede de X`).
+  listado. La lista general de tenants **no muestra las sedes** — solo principales, con una
+  columna `Sedes` que cuenta las que tiene cada uno; las sedes se ven entrando al padre.
 - **Credencial**: API key del tenant interno con scope **`PLATFORM`** (`require_platform` en
   `deps.py`). Ese scope no está en `_API_KEY_SCOPE_ROLES` a propósito: aprovisiona tenants pero
   no lee ni escribe datos de ninguno. `create_api_key` rechaza emitirlo fuera del tenant interno.

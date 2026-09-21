@@ -332,8 +332,16 @@ async def page_tenants() -> None:
         with table_container:
             try:
                 data = await api.list_tenants(_token())
-                items: list[dict] = data.get("items", [])
-                total: int = data.get("total", 0)
+                all_items: list[dict] = data.get("items", [])
+                # Las sedes no se listan aquí: viven dentro del detalle de su tenant
+                # principal (sección Sedes). Aquí solo se cuentan.
+                sedes_por_padre: dict[str, int] = {}
+                for t in all_items:
+                    if t.get("parent_tenant_id"):
+                        pid = str(t["parent_tenant_id"])
+                        sedes_por_padre[pid] = sedes_por_padre.get(pid, 0) + 1
+                items = [t for t in all_items if not t.get("parent_tenant_id")]
+                total: int = len(items)
 
                 if not items:
                     with ui.card().classes("w-full p-8 text-center"):
@@ -344,11 +352,10 @@ async def page_tenants() -> None:
 
                 ui.label(f"{total} tenant(s) registrado(s)").classes("text-sm text-gray-500 mb-2")
 
-                names = {str(t["id"]): t["name"] for t in items}
                 columns = [
                     {"name": "name", "label": "Nombre", "field": "name", "align": "left", "sortable": True},
                     {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
-                    {"name": "kind", "label": "Tipo", "field": "kind_str", "align": "left"},
+                    {"name": "sedes", "label": "Sedes", "field": "sedes_str", "align": "center"},
                     {"name": "tier", "label": "Tier", "field": "subscription_tier", "align": "center", "sortable": True},
                     {"name": "status", "label": "Estado", "field": "status_str", "align": "center"},
                     {"name": "created_at", "label": "Creado", "field": "created_str", "align": "center", "sortable": True},
@@ -360,10 +367,7 @@ async def page_tenants() -> None:
                         **t,
                         "status_str": "Activo" if t["is_active"] else "Suspendido",
                         "created_str": t["created_at"][:10],
-                        "kind_str": (
-                            f"↳ Sede de {names.get(str(t['parent_tenant_id']), '?')}"
-                            if t.get("parent_tenant_id") else "Principal"
-                        ),
+                        "sedes_str": str(sedes_por_padre.get(str(t["id"]), 0) or "—"),
                     }
                     for t in items
                 ]
