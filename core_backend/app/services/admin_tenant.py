@@ -61,11 +61,19 @@ async def create_tenant(
                 ),
             )
     if request.parent_tenant_id:
-        parent = await db.execute(select(Tenant).where(Tenant.id == str(request.parent_tenant_id)))
-        if parent.scalar_one_or_none() is None:
+        parent = (
+            await db.execute(select(Tenant).where(Tenant.id == str(request.parent_tenant_id)))
+        ).scalar_one_or_none()
+        if parent is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="parent_tenant_id no corresponde a ningún tenant",
+            )
+        # Un solo nivel: las sedes cuelgan de un principal, nunca de otra sede.
+        if parent.parent_tenant_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Una sede no puede tener sedes; crea la sede desde el tenant principal",
             )
 
     result = await db.execute(select(Tenant).where(Tenant.slug == slug))

@@ -329,3 +329,26 @@ async def test_panel_sede_padre_inexistente(client: AsyncClient, admin_auth_head
         headers=admin_auth_headers,
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_una_sede_no_puede_tener_sedes(client: AsyncClient, admin_auth_headers, tenant_a):
+    """409: solo un tenant principal puede ser padre; una sede no crea sedes."""
+    suffix = uuid.uuid4().hex[:8]
+    sede = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes",
+        json={"name": f"Sede {suffix}", "admin_email": f"s1-{suffix}@t.com", "admin_full_name": "Admin Sede"},
+        headers=admin_auth_headers,
+    )
+    assert sede.status_code == 201, sede.text
+    sede_id = sede.json()["tenant_id"]
+    try:
+        nieta = await client.post(
+            f"/admin/tenants/{sede_id}/sedes",
+            json={"name": f"Nieta {suffix}", "admin_email": f"s2-{suffix}@t.com", "admin_full_name": "Admin Nieta"},
+            headers=admin_auth_headers,
+        )
+        assert nieta.status_code == 409, nieta.text
+        assert "principal" in nieta.json()["detail"]
+    finally:
+        await _delete_tenant(sede_id)

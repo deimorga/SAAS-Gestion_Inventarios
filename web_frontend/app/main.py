@@ -648,15 +648,22 @@ async def page_tenant_detail(tenant_id: str) -> None:
         sede_err.set_text("")
         sede_dialog.open()
 
+    es_sede = bool(tenant.get("parent_tenant_id"))
     with ui.row().classes("w-full items-center justify-between mb-3"):
         ui.label("Sedes").classes("text-lg font-bold")
-        ui.button("+ Nueva Sede", on_click=open_sede_dialog).props('unelevated color="primary"')
+        if not es_sede:
+            ui.button("+ Nueva Sede", on_click=open_sede_dialog).props('unelevated color="primary"')
 
     sedes_container = ui.column().classes("w-full")
 
     async def load_sedes() -> None:
         sedes_container.clear()
         with sedes_container:
+            if es_sede:
+                ui.label(
+                    f"Este tenant es una sede de {parent_name}. Las sedes solo se crean desde el tenant principal."
+                ).classes("text-sm text-gray-500")
+                return
             try:
                 sedes = await api.list_sedes(_token(), tenant_id)
             except Exception as ex:

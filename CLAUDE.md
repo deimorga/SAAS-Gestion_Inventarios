@@ -681,6 +681,8 @@ Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
 - **Portal**: detalle del tenant → sección **Sedes** con **+ Nueva Sede** (muestra la key una vez) y
   listado. La lista general de tenants **no muestra las sedes** — solo principales, con una
   columna `Sedes` que cuenta las que tiene cada uno; las sedes se ven entrando al padre.
+- **Un solo nivel**: una sede no puede tener sedes (`create_tenant` → 409 si el padre ya tiene
+  `parent_tenant_id`); el portal no muestra el botón en el detalle de una sede.
 - **Credencial**: API key del tenant interno con scope **`PLATFORM`** (`require_platform` en
   `deps.py`). Ese scope no está en `_API_KEY_SCOPE_ROLES` a propósito: aprovisiona tenants pero
   no lee ni escribe datos de ninguno. `create_api_key` rechaza emitirlo fuera del tenant interno.
