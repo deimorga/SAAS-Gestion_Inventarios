@@ -4,6 +4,7 @@ Tests de F-7 — Celery Tasks: send_email, check_expiring_api_keys, revoke_grace
 Todos los tests mockean Resend para que ninguna llamada real salga al exterior.
 """
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -52,6 +53,7 @@ async def _key_is_active(key_id: str) -> bool:
         )
         row = result.fetchone()
         return bool(row[0]) if row else False
+
 
 
 # ── Tests: send_email ──────────────────────────────────────────────────────
@@ -177,7 +179,7 @@ async def test_revoke_grace_period_key_already_inactive(tenant_a):
 
 
 @pytest.mark.asyncio
-async def test_check_expiring_keys_detects_30d(tenant_a):
+async def test_check_expiring_keys_detects_30d(tenant_a, user_a):
     """Detecta keys que vencen en exactamente 30 días."""
     from app.tasks import _async_check_expiring_api_keys
 
@@ -206,6 +208,69 @@ async def test_check_expiring_keys_expires_today(tenant_a):
         assert await _key_is_active(key_id) is False
     finally:
         await _delete_api_key(key_id)
+
+
+def _avisos_de(mock_delay: MagicMock, key_name: str) -> list:
+    """Llamadas a send_email.delay que corresponden a una key concreta."""
+    return [c.kwargs for c in mock_delay.call_args_list if c.kwargs["context"]["key_name"] == key_name]
+
+
+@pytest.mark.asyncio
+async def test_check_expiring_keys_avisa_a_los_admins_del_tenant(tenant_a, user_a):
+    """El aviso va al email de cada tenant_admin activo, nunca a una dirección vacía."""
+    from app.tasks import _async_check_expiring_api_keys
+
+    future = datetime.now(timezone.utc) + timedelta(days=7)
+    nombre = f"exp-7d-{uuid.uuid4().hex[:6]}"
+    key_id = await _create_api_key_direct(tenant_a["id"], nombre, future)
+    try:
+        with patch("app.tasks.send_email") as mock_task:
+            await _async_check_expiring_api_keys()
+        avisos = _avisos_de(mock_task.delay, nombre)
+        assert [a["to_email"] for a in avisos] == [user_a["email"]]
+        assert avisos[0]["template"] == "api_key_expiring_7d"
+        assert avisos[0]["context"]["full_name"] == "Test User"
+    finally:
+        await _delete_api_key(key_id)
+
+
+@pytest.mark.asyncio
+async def test_check_expiring_keys_avisa_al_desactivar(tenant_a, user_a):
+    """Una key que vence hoy se desactiva y el admin recibe api_key_expired."""
+    from app.tasks import _async_check_expiring_api_keys
+
+    today_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    nombre = f"exp-hoy-{uuid.uuid4().hex[:6]}"
+    key_id = await _create_api_key_direct(tenant_a["id"], nombre, today_midnight)
+    try:
+        with patch("app.tasks.send_email") as mock_task:
+            await _async_check_expiring_api_keys()
+        avisos = _avisos_de(mock_task.delay, nombre)
+        assert [(a["to_email"], a["template"]) for a in avisos] == [(user_a["email"], "api_key_expired")]
+        assert await _key_is_active(key_id) is False
+    finally:
+        await _delete_api_key(key_id)
+
+
+def test_check_expiring_keys_sobrevive_a_ejecuciones_seguidas():
+    """La tarea síncrona corre dos veces en el mismo proceso, como en el worker.
+
+    Cada ejecución abre un event loop nuevo; antes del arreglo la segunda
+    heredaba conexiones del pool atadas al loop anterior y moría con
+    "attached to a different loop" — todos los días, en cuanto el worker
+    llevaba más de una ejecución.
+    """
+    from app.core.database import engine
+    from app.tasks import check_expiring_api_keys
+
+    # Suelta (sin cerrarlas) las conexiones que dejaron los tests async en su loop
+    engine.sync_engine.dispose(close=False)
+    # En un hilo aparte, como el proceso del worker: asyncio.run() deja sin
+    # event loop al hilo que lo llama y rompería los tests async siguientes.
+    with patch("app.tasks.send_email"), ThreadPoolExecutor(max_workers=1) as hilo:
+        primera = hilo.submit(check_expiring_api_keys).result()
+        segunda = hilo.submit(check_expiring_api_keys).result()
+    assert set(primera) == set(segunda) == {"queued", "expired"}
 
 
 @pytest.mark.asyncio
