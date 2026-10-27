@@ -28,8 +28,10 @@ from app.core.security import (
     hash_api_secret,
     rate_limit_key,
     rpm_for_tier,
+    tenant_tier_key,
 )
 from app.models.api_key import ApiKey
+from app.models.tenant import Tenant
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -53,6 +55,30 @@ class AuthContext:
 
 
 # ── Rate limiting ──────────────────────────────────────────────────────────
+
+# Cuánto vive el tier cacheado. Cambiar el tier desde admin borra la clave, así
+# que el TTL solo acota el desfase si algo lo cambia por otra vía (SQL a mano).
+TIER_CACHE_TTL_SECONDS = 300
+
+
+async def _tenant_tier(tenant_id: str, redis: aioredis.Redis) -> str:
+    """Tier de suscripción del tenant: de Redis, o de la BD si no está cacheado.
+
+    Antes solo se leía de Redis y nada escribía la clave, así que todos los
+    tenants —ENTERPRISE incluidos— quedaban limitados como STARTER.
+    """
+    key = tenant_tier_key(tenant_id)
+    cached = await redis.get(key)
+    if cached:
+        return cached
+
+    # `tenants` no está bajo RLS: no hace falta contexto de tenant
+    async with AsyncSessionLocal() as session:
+        tier = await session.scalar(select(Tenant.subscription_tier).where(Tenant.id == tenant_id))
+    tier = tier or "STARTER"
+    await redis.set(key, tier, ex=TIER_CACHE_TTL_SECONDS)
+    return tier
+
 
 async def _apply_rate_limit(tenant_id: str, tier: str, redis: aioredis.Redis) -> dict:
     key = rate_limit_key(tenant_id)
@@ -110,8 +136,7 @@ async def get_current_auth(
         user_id = payload["sub"]
         token_scope = payload.get("scope", "full")
 
-        tier_key = f"tenant_tier:{tenant_id}"
-        tier = await redis.get(tier_key) or "STARTER"
+        tier = await _tenant_tier(tenant_id, redis)
 
         rl_info = await _apply_rate_limit(tenant_id, tier, redis)
 
@@ -148,8 +173,7 @@ async def get_current_auth(
     if hash_api_secret(token) != api_key.key_hash:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
 
-    tier_key = f"tenant_tier:{api_key.tenant_id}"
-    tier = await redis.get(tier_key) or "STARTER"
+    tier = await _tenant_tier(api_key.tenant_id, redis)
     rl_info = await _apply_rate_limit(api_key.tenant_id, tier, redis)
 
     auth = AuthContext(

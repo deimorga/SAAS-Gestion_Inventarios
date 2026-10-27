@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_admin_db, require_super_admin
 from app.core.redis_client import get_redis
+from app.core.security import tenant_tier_key
 from app.schemas.admin_tenant import (
     TenantCreate,
     TenantCreateResponse,
@@ -108,8 +109,12 @@ async def patch_tenant(
     body: TenantUpdate,
     _auth: AuthContext = Depends(require_super_admin),
     db: AsyncSession = Depends(get_admin_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
-    return await update_tenant(tenant_id, body, db)
+    tenant = await update_tenant(tenant_id, body, db)
+    # El rate limit cachea el tier: sin esto el cambio tardaría el TTL en aplicarse
+    await redis.delete(tenant_tier_key(tenant_id))
+    return tenant
 
 
 @router.post(

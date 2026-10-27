@@ -89,5 +89,10 @@ def rate_limit_key(tenant_id: str) -> str:
     return f"rate:{tenant_id}:{minute_bucket}"
 
 
+def tenant_tier_key(tenant_id: str) -> str:
+    """Clave Redis donde se cachea el tier de suscripción de un tenant."""
+    return f"tenant_tier:{tenant_id}"
+
+
 def rpm_for_tier(tier: str) -> int:
     return TIER_RPM.get(tier.upper(), TIER_RPM["STARTER"])

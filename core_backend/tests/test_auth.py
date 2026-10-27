@@ -103,6 +103,36 @@ async def test_rate_limit_headers_present(client: AsyncClient, auth_headers_a):
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_usa_el_tier_del_tenant(client: AsyncClient, auth_headers_a):
+    """El límite sale del tier del tenant (PROFESSIONAL), no del STARTER por defecto.
+
+    Antes el tier solo se leía de una clave Redis que nada escribía: todos los
+    tenants, ENTERPRISE incluidos, quedaban a 60 rpm.
+    """
+    resp = await client.get("/v1/audit-logs", headers=auth_headers_a)
+    assert resp.status_code == 200
+    assert resp.headers["X-RateLimit-Limit"] == "1000"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_aplica_el_cambio_de_tier_al_instante(
+    client: AsyncClient, auth_headers_a, admin_auth_headers, tenant_a
+):
+    """Cambiar el tier desde admin invalida la caché: el siguiente request ya lo usa."""
+    await client.get("/v1/audit-logs", headers=auth_headers_a)  # deja el tier cacheado
+
+    resp = await client.patch(
+        f"/admin/tenants/{tenant_a['id']}",
+        json={"subscription_tier": "ENTERPRISE"},
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/v1/audit-logs", headers=auth_headers_a)
+    assert resp.headers["X-RateLimit-Limit"] == "10000"
+
+
+@pytest.mark.asyncio
 async def test_login_inactive_user_rejected(client: AsyncClient, db, user_a):
     """Login con cuenta suspendida devuelve 403."""
     await db.execute(text("UPDATE users SET is_active = false WHERE id = :id"), {"id": user_a["id"]})
