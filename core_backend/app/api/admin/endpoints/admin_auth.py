@@ -1,5 +1,5 @@
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
@@ -7,6 +7,7 @@ from app.core.redis_client import get_redis
 from app.schemas.admin_auth import AdminLoginResponse, AdminRegisterRequest
 from app.schemas.auth import LoginRequest
 from app.services.admin_auth import login_admin_surface, register_super_admin
+from app.services.login_throttle import client_ip, throttled_login
 
 router = APIRouter(prefix="/auth", tags=["Admin — Auth"])
 
@@ -55,11 +56,15 @@ async def bootstrap_register(
         401: {"description": "Credenciales inválidas"},
         403: {"description": "Rol no permitido en esta superficie o cuenta suspendida"},
         422: {"description": "Datos de entrada inválidos"},
+        429: {"description": "Demasiados intentos fallidos: bloqueo temporal de 15 min"},
     },
 )
 async def admin_login(
     body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    return await login_admin_surface(body.email, body.password, db, redis)
+    return await throttled_login(
+        redis, body.email, client_ip(request), lambda: login_admin_surface(body.email, body.password, db, redis)
+    )

@@ -21,6 +21,8 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     return JSONResponse(
         status_code=exc.status_code,
         content=_error_body(exc.detail, "HTTP_ERROR", request_id),
+        # Sin esto se perdían las cabeceras de la excepción, p. ej. el Retry-After de los 429
+        headers=getattr(exc, "headers", None),
     )
 
 

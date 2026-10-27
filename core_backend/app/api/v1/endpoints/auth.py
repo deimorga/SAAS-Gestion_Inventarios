@@ -1,11 +1,12 @@
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.core.redis_client import get_redis
 from app.schemas.auth import LoginRequest, LogoutRequest, RefreshRequest, RefreshResponse, TokenResponse
 from app.services.auth import authenticate_user, issue_tokens, logout, refresh_session
+from app.services.login_throttle import client_ip, throttled_login
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -22,14 +23,18 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
     responses={
         401: {"description": "Credenciales inválidas"},
         422: {"description": "Datos de entrada inválidos"},
+        429: {"description": "Demasiados intentos fallidos: bloqueo temporal de 15 min"},
     },
 )
 async def login(
     body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    user = await authenticate_user(body.email, body.password, db)
+    user = await throttled_login(
+        redis, body.email, client_ip(request), lambda: authenticate_user(body.email, body.password, db)
+    )
     return await issue_tokens(user, redis)
 
 

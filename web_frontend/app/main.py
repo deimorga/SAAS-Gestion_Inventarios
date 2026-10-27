@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 import httpx
+from fastapi import Request
 from nicegui import app, ui
 
 from app import api
@@ -82,8 +83,12 @@ def _tier_badge(tier: str) -> None:
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @ui.page("/login")
-def page_login() -> None:
+def page_login(request: Request) -> None:
     ui.colors(primary="#1a56db")
+    # IP del navegador, para que el límite de intentos del API cuente por origen
+    # real y no por la IP del portal, que es la misma para todos.
+    forwarded = request.headers.get("x-forwarded-for", "")
+    browser_ip = forwarded.split(",")[-1].strip() or (request.client.host if request.client else "")
 
     with ui.card().classes("absolute-center w-96 shadow-2xl p-8"):
         ui.label("MicroNuba").classes("text-3xl font-bold text-primary text-center")
@@ -102,7 +107,7 @@ def page_login() -> None:
                 error_label.set_text("Completa todos los campos.")
                 return
             try:
-                data = await api.admin_login(email_input.value, password_input.value)
+                data = await api.admin_login(email_input.value, password_input.value, browser_ip)
                 app.storage.user["token"] = data["access_token"]
                 app.storage.user["refresh_token"] = data.get("refresh_token", "")
                 app.storage.user["user_email"] = data["user"]["email"]
@@ -116,6 +121,8 @@ def page_login() -> None:
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     error_label.set_text("Credenciales incorrectas.")
+                elif e.response.status_code == 429:
+                    error_label.set_text(e.response.json().get("detail", "Demasiados intentos fallidos."))
                 elif e.response.status_code == 422:
                     try:
                         detail = e.response.json().get("detail", "Datos inválidos")
