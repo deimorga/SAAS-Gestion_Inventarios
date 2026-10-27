@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     API_KEY_EXPIRY_DAYS: int = 365
     API_KEY_ROTATION_GRACE_DAYS: int = 30  # mín 7, máx 90 (por tenant vía config JSONB)
 
+    # Orígenes cuyo X-Forwarded-For se cree, separados por comas (IP o nombre de
+    # contenedor). inv-api está en la red compartida del gateway: cualquier vecino
+    # puede llamarlo directo y falsear la cabecera. Traefik tiene IP fija; el
+    # portal se resuelve por nombre porque su IP cambia al recrearlo.
+    TRUSTED_PROXY_HOSTS: str = "172.22.0.254,inv-admin-portal"
+
     # SMTP — solo usado en APP_ENV=staging (Mailpit). En producción se usa Resend SDK.
     SMTP_HOST: str = "inv-mailpit-staging"
     SMTP_PORT: int = 1025

@@ -11,11 +11,15 @@ Dos contadores en Redis, ambos de ventana fija desde el primer fallo:
   - IP          : frena el credential stuffing (muchos emails, un origen).
 Solo cuenta una contraseña rechazada (401). Un 403 implica que era correcta.
 """
+import asyncio
+import ipaddress
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException, Request, status
+
+from app.core.config import settings
 
 MAX_FAILURES_PER_ACCOUNT = 5
 MAX_FAILURES_PER_IP = 20
@@ -24,20 +28,43 @@ LOCKOUT_SECONDS = 15 * 60
 T = TypeVar("T")
 
 
-def client_ip(request: Request) -> str:
+async def _trusted_proxy_ips() -> set[str]:
+    """IPs de TRUSTED_PROXY_HOSTS; los nombres se resuelven en cada llamada.
+
+    Solo se usa en el login, así que el coste de resolver es despreciable, y
+    resolver siempre evita confiar en una IP vieja tras recrear el contenedor.
+    """
+    loop = asyncio.get_running_loop()
+    ips: set[str] = set()
+    for host in filter(None, (h.strip() for h in settings.TRUSTED_PROXY_HOSTS.split(","))):
+        try:
+            ipaddress.ip_address(host)
+            ips.add(host)
+        except ValueError:
+            try:
+                infos = await loop.getaddrinfo(host, None)
+            except OSError:
+                continue  # contenedor caído o inexistente: no se confía en nada
+            ips.update(str(info[4][0]) for info in infos)
+    return ips
+
+
+async def client_ip(request: Request) -> str:
     """IP real del cliente.
 
-    Detrás de Traefik la conexión llega desde el proxy; Traefik descarta el
-    X-Forwarded-For que envía el cliente y añade la IP de origen al final, así
-    que el último elemento es el fiable. El portal, que llama por la red interna,
-    reenvía del mismo modo la IP del navegador.
+    X-Forwarded-For solo se cree si la conexión viene de un proxy de confianza:
+    Traefik descarta el que envía el cliente y añade la IP de origen al final,
+    y el portal reenvía igual la del navegador. inv-api está en la red
+    compartida del gateway, así que cualquier otro contenedor podría llamarlo
+    directo con la cabecera falseada; para esos cuenta la IP de la conexión.
     """
+    peer = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
+    if forwarded and peer in await _trusted_proxy_ips():
         last = forwarded.split(",")[-1].strip()
         if last:
             return last
-    return request.client.host if request.client else "unknown"
+    return peer
 
 
 def _account_key(email: str, ip: str) -> str:

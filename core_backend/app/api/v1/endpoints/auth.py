@@ -33,7 +33,7 @@ async def login(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     user = await throttled_login(
-        redis, body.email, client_ip(request), lambda: authenticate_user(body.email, body.password, db)
+        redis, body.email, await client_ip(request), lambda: authenticate_user(body.email, body.password, db)
     )
     return await issue_tokens(user, redis)
 

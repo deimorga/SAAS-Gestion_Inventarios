@@ -66,5 +66,5 @@ async def admin_login(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     return await throttled_login(
-        redis, body.email, client_ip(request), lambda: login_admin_surface(body.email, body.password, db, redis)
+        redis, body.email, await client_ip(request), lambda: login_admin_surface(body.email, body.password, db, redis)
     )
