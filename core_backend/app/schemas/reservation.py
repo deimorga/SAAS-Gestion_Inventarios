@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,6 +10,21 @@ class ReservationItemInput(BaseModel):
     warehouse_id: str = Field(..., description="UUID del almacén origen")
     zone_id: str = Field(..., description="UUID de la zona origen")
     quantity: Decimal = Field(..., gt=0, description="Cantidad a reservar (mayor que 0)", examples=[2.0])
+    lot_number: str | None = Field(
+        None,
+        max_length=100,
+        description=(
+            "Opcional. Reservar de este lote. Si se omite y el producto maneja lotes (track_lots), el inventario "
+            "elige: primero el que vence antes (FEFO) y, sin vencimientos, el que entró primero (FIFO). "
+            "Si un lote no alcanza, la reserva se reparte en varios."
+        ),
+    )
+    bin_id: UUID | None = Field(
+        None, description="Opcional. Reservar solo de esta ubicación; debe pertenecer a zone_id y al tenant."
+    )
+    supplier_id: UUID | None = Field(
+        None, description="Opcional. Reservar solo lotes de este proveedor; debe pertenecer al tenant."
+    )
 
 
 class ReservationCreate(BaseModel):
@@ -31,6 +47,20 @@ class ReservationCreate(BaseModel):
     )
 
 
+class ReservationAllocationResponse(BaseModel):
+    """Parte del ítem apartada de un lote/ubicación concretos. En la confirmación,
+    `confirmed_qty` es lo que salió de verdad de ese lote."""
+
+    lot_number: str | None
+    bin_id: str | None
+    bin_code: str | None = None
+    bin_name: str | None = None
+    supplier_id: str | None = None
+    expiry_date: date | None = None
+    quantity: Decimal
+    confirmed_qty: Decimal
+
+
 class ReservationItemResponse(BaseModel):
     id: str
     product_id: str
@@ -38,6 +68,13 @@ class ReservationItemResponse(BaseModel):
     zone_id: str
     quantity: Decimal
     confirmed_qty: Decimal
+    lot_number: str | None = Field(None, description="Lote pedido al reservar (null = lo eligió el inventario).")
+    bin_id: str | None = Field(None, description="Bin pedido al reservar (null = cualquiera de la zona).")
+    supplier_id: str | None = Field(None, description="Proveedor pedido al reservar.")
+    allocations: list[ReservationAllocationResponse] = Field(
+        default_factory=list,
+        description="Desglose real: de qué lote y bin salió cada parte. Vacío en reservas anteriores a la migración 015.",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

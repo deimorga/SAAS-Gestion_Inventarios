@@ -181,6 +181,12 @@ async def delete_product(token: str, tenant_id: str, product_id: str) -> None:
 
 # ── Categories ──────────────────────────────────────────────────────────────
 
+async def list_suppliers(token: str, tenant_id: str) -> list[dict[str, Any]]:
+    """Proveedores del tenant, activos e inactivos (para nombrar el proveedor de cada lote)."""
+    r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/suppliers", token)
+    return r.json()
+
+
 async def list_categories(token: str, tenant_id: str) -> list[dict[str, Any]]:
     r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/categories", token)
     return r.json()
@@ -188,8 +194,10 @@ async def list_categories(token: str, tenant_id: str) -> list[dict[str, Any]]:
 
 # ── Stock ────────────────────────────────────────────────────────────────────
 
-async def list_stock(token: str, tenant_id: str, warehouse_id: str | None = None) -> dict[str, Any]:
-    params: dict[str, Any] = {"page_size": 100}
+async def list_stock(
+    token: str, tenant_id: str, warehouse_id: str | None = None, page: int = 1, page_size: int = 100
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"page": page, "page_size": page_size}
     if warehouse_id:
         params["warehouse_id"] = warehouse_id
     r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/stock", token, params=params)

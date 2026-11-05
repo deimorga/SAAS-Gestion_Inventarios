@@ -22,6 +22,8 @@ class InventoryLedger(Base):
     qty_change: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     lot_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bin_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("bins.id"), nullable=True)
+    supplier_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("suppliers.id"), nullable=True)
     serial_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     reference_type: Mapped[str] = mapped_column(String(50), nullable=False)

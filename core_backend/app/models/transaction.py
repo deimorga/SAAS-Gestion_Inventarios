@@ -17,6 +17,8 @@ class Transaction(Base):
     reference_type: Mapped[str] = mapped_column(String(50), nullable=False)
     reference_id: Mapped[str] = mapped_column(String(100), nullable=False)
     reason_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Consecutivo legible por tenant (E-000058). Solo lo llevan las entradas (RECEIPT).
+    document_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="COMPLETED")
     items_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

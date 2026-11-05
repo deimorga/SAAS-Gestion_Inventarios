@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch import Batch, SerialNumber
 from app.models.product import Product
+from app.services.traceability import eq_or_null, get_supplier_of_tenant, opt_str
 from app.schemas.batch import (
     BatchCreate,
     BatchResponse,
@@ -35,15 +36,23 @@ async def create_batch(body: BatchCreate, db: AsyncSession, tenant_id: str) -> B
             detail="El producto no tiene trazabilidad de lotes habilitada (`track_lots=false`)",
         )
 
+    await get_supplier_of_tenant(db, body.supplier_id, tenant_id)
+    supplier_id = opt_str(body.supplier_id)
+
+    # El lote es producto + proveedor + número: otro proveedor puede repetir el número.
     dup = await db.execute(
         select(Batch).where(
             Batch.tenant_id == tenant_id,
             Batch.product_id == str(body.product_id),
             Batch.batch_number == body.batch_number,
+            eq_or_null(Batch.supplier_id, supplier_id),
         )
     )
     if dup.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"El número de lote '{body.batch_number}' ya existe para este producto")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"El número de lote '{body.batch_number}' ya existe para este producto y proveedor",
+        )
 
     now = datetime.now(timezone.utc)
     batch = Batch(
@@ -51,6 +60,7 @@ async def create_batch(body: BatchCreate, db: AsyncSession, tenant_id: str) -> B
         tenant_id=tenant_id,
         product_id=str(body.product_id),
         batch_number=body.batch_number,
+        supplier_id=supplier_id,
         manufactured_date=body.manufactured_date,
         expiry_date=body.expiry_date,
         initial_qty=body.initial_qty,

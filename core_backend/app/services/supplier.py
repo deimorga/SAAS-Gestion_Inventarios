@@ -58,7 +58,7 @@ async def create_supplier(body: SupplierCreate, db: AsyncSession, tenant_id: str
     return SupplierResponse.model_validate(supplier)
 
 
-async def list_suppliers(db: AsyncSession, tenant_id: str, is_active: bool = True) -> list[SupplierResponse]:
+async def list_suppliers(db: AsyncSession, tenant_id: str, is_active: bool | None = True) -> list[SupplierResponse]:
     query = select(Supplier).where(Supplier.tenant_id == tenant_id)
     if is_active is not None:
         query = query.where(Supplier.is_active.is_(is_active))

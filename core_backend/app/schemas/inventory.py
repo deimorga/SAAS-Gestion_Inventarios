@@ -75,6 +75,20 @@ class TransactionItemInput(BaseModel):
         description="Fecha de vencimiento en formato YYYY-MM-DD. Requerida si el producto tiene track_expiry=true.",
         examples=["2027-06-30"],
     )
+    bin_id: UUID | None = Field(
+        None,
+        description=(
+            "Opcional. Ubicación exacta (estante/fila/nivel) dentro de la zona. Debe pertenecer a la zona "
+            "del movimiento y al tenant. Sin bin_id el movimiento usa el stock sin ubicar, como hasta ahora."
+        ),
+    )
+    supplier_id: UUID | None = Field(
+        None,
+        description=(
+            "Opcional. Proveedor del lote. En entradas sobrescribe el supplier_id de la cabecera. En salidas "
+            "solo hace falta si el mismo número de lote existe de dos proveedores en esa ubicación."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -88,6 +102,17 @@ class TransactionItemInput(BaseModel):
             }
         }
     }
+
+
+class TransferItemInput(TransactionItemInput):
+    """Ítem de traslado: el lote viaja con su proveedor; el bin puede cambiar."""
+
+    from_bin_id: UUID | None = Field(
+        None, description="Opcional. Bin de origen; debe pertenecer a source_zone_id. Sin él, sale del stock sin ubicar."
+    )
+    to_bin_id: UUID | None = Field(
+        None, description="Opcional. Bin de destino; debe pertenecer a target_zone_id. Sin él, entra como stock sin ubicar."
+    )
 
 
 # ── Receipts (RF-016: PURCHASE_ORDER, INITIAL_STOCK; RF-020: RETURN_IN) ──────
@@ -123,6 +148,13 @@ class ReceiptRequest(BaseModel):
         ...,
         description="UUID de la zona dentro del almacén destino. Debe pertenecer al warehouse_id indicado.",
         examples=["c2d3e4f5-a6b7-8901-cdef-012345678902"],
+    )
+    supplier_id: UUID | None = Field(
+        None,
+        description=(
+            "Opcional. Proveedor de la mercancía; debe pertenecer al tenant. Queda en el ledger y, si el ítem "
+            "trae lote, en el lote y en su saldo (el mismo número de lote de dos proveedores son lotes distintos)."
+        ),
     )
     items: list[TransactionItemInput] = Field(
         ...,
@@ -257,10 +289,13 @@ class TransferRequest(BaseModel):
         description="UUID de la zona dentro del almacén destino.",
         examples=["e4f5a6b7-c8d9-0123-efab-234567890124"],
     )
-    items: list[TransactionItemInput] = Field(
+    items: list[TransferItemInput] = Field(
         ...,
         min_length=1,
-        description="Productos a transferir. El campo unit_cost es ignorado — se conserva el CPP del origen.",
+        description=(
+            "Productos a transferir. El campo unit_cost es ignorado — se conserva el CPP del origen. "
+            "Cada ítem acepta from_bin_id / to_bin_id opcionales."
+        ),
     )
 
     model_config = {
@@ -295,6 +330,10 @@ class AdjustmentItem(BaseModel):
     new_qty: Decimal = Field(..., ge=0)
     lot_number: str | None = None
     reason: str | None = None
+    bin_id: UUID | None = Field(None, description="Opcional. Bin a ajustar; debe pertenecer a la zona del ajuste.")
+    supplier_id: UUID | None = Field(
+        None, description="Opcional. Solo si el mismo número de lote existe de dos proveedores en esa ubicación."
+    )
 
 
 class AdjustmentRequest(BaseModel):
@@ -313,6 +352,9 @@ class TransactionResponse(BaseModel):
     timestamp: datetime
     status: str
     items_processed: int
+    document_number: str | None = Field(
+        None, description="Consecutivo legible de la entrada por tenant (ej. E-000058). Solo en RECEIPT."
+    )
 
     model_config = {"from_attributes": True}
 
@@ -326,13 +368,19 @@ class StockBalanceResponse(BaseModel):
     physical_qty: Decimal
     reserved_qty: Decimal
     available_qty: Decimal
+    bin_id: UUID | None = Field(None, description="Ubicación exacta; null = stock sin ubicar dentro de la zona.")
+    bin_code: str | None = None
+    bin_name: str | None = None
+    supplier_id: UUID | None = Field(None, description="Proveedor del lote; null en stock sin lote o sin proveedor.")
+    expiry_date: date | None = Field(None, description="Vencimiento del lote (null sin lote o sin fecha).")
 
     model_config = {"from_attributes": True}
 
 
 class LedgerEntryResponse(BaseModel):
     id: UUID
-    transaction_id: UUID
+    # Null solo en salidas por confirmación de reserva registradas antes de la migración 015.
+    transaction_id: UUID | None
     product_id: UUID
     warehouse_id: UUID
     zone_id: UUID
@@ -344,6 +392,14 @@ class LedgerEntryResponse(BaseModel):
     reference_id: str
     reason_code: str
     created_at: datetime
+    bin_id: UUID | None = None
+    bin_code: str | None = None
+    bin_name: str | None = None
+    supplier_id: UUID | None = None
+    expiry_date: date | None = None
+    document_number: str | None = Field(
+        None, description="Consecutivo de la entrada que originó el movimiento (ej. E-000058)."
+    )
 
     model_config = {"from_attributes": True}
 

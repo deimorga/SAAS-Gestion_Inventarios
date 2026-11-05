@@ -18,6 +18,11 @@ class StockBalance(Base):
     warehouse_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("warehouses.id", ondelete="CASCADE"), nullable=False)
     zone_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("zones.id", ondelete="CASCADE"), nullable=False)
     lot_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Ubicación exacta dentro de la zona (NULL = stock sin ubicar, como el histórico).
+    bin_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("bins.id"), nullable=True)
+    # Proveedor del lote. Solo se informa cuando hay lote: el proveedor distingue lotes,
+    # no parte el stock suelto (así una salida sin lote nunca se vuelve ambigua).
+    supplier_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("suppliers.id"), nullable=True)
     physical_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
     reserved_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
     available_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))

@@ -16,6 +16,8 @@ Este módulo gestiona el **bloqueo temporal y definitivo de stock** para pedidos
 
 ### RF-025: Reservas Temporales (Soft Reservations)
 
+> ⚠️ **Ampliado por el módulo 10** ([RF_trazabilidad_lotes_ubicaciones.md](../10_trazabilidad_lotes_ubicaciones/RF_trazabilidad_lotes_ubicaciones.md), 2026-11-04): el ítem acepta `lot_number`, `bin_id` y `supplier_id`; sin lote, el inventario elige FEFO → FIFO y puede repartir la reserva en varios lotes. La respuesta trae `allocations[]` (RF-055). RN-025-1 se mantiene: la reserva no escribe en el ledger.
+
 - **ID:** RF-025 | **Prioridad:** P1
 - **Descripción:** Bloquear stock temporalmente desde un carrito de compras o pedido pendiente. El stock se resta del `available_qty` pero se mantiene en `physical_qty`. Si no se confirma en el tiempo configurado (TTL), se libera automáticamente.
 - **Flujo Principal:**
@@ -32,6 +34,8 @@ Este módulo gestiona el **bloqueo temporal y definitivo de stock** para pedidos
 
 ### RF-026: Confirmación de Reservas (Hard Commitment)
 
+> ⚠️ **Corregido por el módulo 10** ([RF_trazabilidad_lotes_ubicaciones.md](../10_trazabilidad_lotes_ubicaciones/RF_trazabilidad_lotes_ubicaciones.md), 2026-11-04): el paso 5 deja **un `ISSUE` por lote/bin**, con `reference_id` igual al de la reserva, y la confirmación crea su `Transaction`. Confirmar más de lo reservado responde `422` (RN-055-2). Antes descontaba la cantidad de todos los saldos de la zona (RN-061-1).
+
 - **ID:** RF-026 | **Prioridad:** P1
 - **Descripción:** Convertir una reserva temporal en una salida real de inventario tras la confirmación de pago. La reserva pasa a estado `CONFIRMED` y se genera la salida en el Motor Transaccional (RF-017).
 - **Flujo Principal:**
@@ -46,6 +50,8 @@ Este módulo gestiona el **bloqueo temporal y definitivo de stock** para pedidos
 - **Manejo de Errores:** Reserva expirada → `409 Conflict`. Reserva ya confirmada → `409`. Reserva no encontrada → `404`.
 
 ### RF-027: Liberación Automática de Reservas (Auto-Expiration)
+
+> ⚠️ **Corregido por el módulo 10** ([RF_trazabilidad_lotes_ubicaciones.md](../10_trazabilidad_lotes_ubicaciones/RF_trazabilidad_lotes_ubicaciones.md), 2026-11-04): la expiración libera exactamente lo que apartó cada asignación (RN-055-3), no el total por producto + zona.
 
 - **ID:** RF-027 | **Prioridad:** P1
 - **Descripción:** Un servicio en segundo plano debe liberar las reservas que superen su TTL, devolviendo el stock al pool disponible.

@@ -11,7 +11,7 @@ from app.models.zone import Zone
 from app.models.transaction import Transaction
 from app.models.stock_balance import StockBalance
 from app.models.inventory_ledger import InventoryLedger
-from app.models.reservation import Reservation, ReservationItem
+from app.models.reservation import Reservation, ReservationAllocation, ReservationItem
 from app.models.valuation_snapshot import ValuationSnapshot
 from app.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.models.cycle_count import CycleCountItem, CycleCountSession
@@ -23,7 +23,7 @@ from app.models.channel_allocation import ChannelAllocation
 __all__ = [
     "Tenant", "User", "ApiKey", "AuditLog", "Category", "Product", "ProductUom", "KitComponent",
     "Warehouse", "Zone", "Transaction", "StockBalance", "InventoryLedger",
-    "Reservation", "ReservationItem", "ValuationSnapshot",
+    "Reservation", "ReservationItem", "ReservationAllocation", "ValuationSnapshot",
     "WebhookEndpoint", "WebhookDelivery",
     "CycleCountSession", "CycleCountItem",
     "Supplier", "SupplierProduct",

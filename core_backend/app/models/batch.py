@@ -16,6 +16,8 @@ class Batch(Base):
     tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     batch_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Identidad del lote = producto + proveedor + número: dos proveedores pueden repetir número.
+    supplier_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("suppliers.id"), nullable=True)
     manufactured_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     initial_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)

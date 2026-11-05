@@ -43,7 +43,7 @@ core_backend/                   # FastAPI backend
 │       ├── security.py       # JWT, API key, password hashing
 │       ├── redis_client.py   # Redis connection pool
 │       └── exceptions.py     # Custom exception handlers
-├── alembic/                  # Database migrations (14 revisions)
+├── alembic/                  # Database migrations (15 revisions)
 ├── tests/                    # 23+ test modules (RLS isolation, auth, etc.)
 ├── scripts/                  # Utilities (export_openapi.py)
 ├── requirements.txt          # Python dependencies
@@ -301,7 +301,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 
 ### Alembic Migrations
 
-14 revisions in `core_backend/alembic/versions/`:
+15 revisions in `core_backend/alembic/versions/`:
 1. **001** — Initial schema
 2. **002** — Catalog enhancements
 3. **003** — Inventory (transactions, ledgers, reservations)
@@ -316,6 +316,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 12. **012** — Admin bootstrap & RLS policies
 13. **013** — `sale_price` (Numeric 18,4, nullable) en tabla `products`
 14. **014** — `tenants.external_provider/external_id/parent_tenant_id/tax_id` — sedes aprovisionadas desde Appits
+15. **015** — bin y proveedor en saldos/ledger/lotes, `reservation_allocations`, consecutivo de entradas (`document_sequences`)
 
 **Migration Commands**:
 ```bash
@@ -349,7 +350,7 @@ Critical settings in `.env`:
 
 ### Test Modules
 
-All tests in `core_backend/tests/` (26 módulos, 324 tests):
+All tests in `core_backend/tests/` (28 módulos, 386 tests):
 - `test_auth.py`, `test_admin_auth.py`, `test_activation.py` — Auth & admin
 - `test_inventory.py`, `test_reservations.py`, `test_cycle_counts.py` — Inventory
 - `test_products.py`, `test_categories.py`, `test_suppliers.py` — Catalog
@@ -357,6 +358,7 @@ All tests in `core_backend/tests/` (26 módulos, 324 tests):
 - `test_rls_isolation.py`, `test_api_key_rotation.py` — Security
 - `test_rls_enforcement.py` — El rol no puede saltarse RLS; el contexto sobrevive al commit
 - `test_activation_delivery.py` — El email de activación se encola; reenvío como super_admin
+- `test_lot_location_traceability.py` — Bins, proveedor del lote, FEFO/FIFO y reparto en reservas, filtros, consecutivo de entradas, compatibilidad y aislamiento
 - `test_webhooks.py`, `test_tasks.py` — Async & webhooks
 
 ### Running Tests
@@ -722,6 +724,46 @@ Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
 - **Fix tests**: el fixture autouse de `test_admin_auth.py` borraba **todos** los super_admins de
   la BD de desarrollo (incluida la cuenta real del portal local) en cada `pytest`. Ahora los
   guarda y los restaura.
+
+## Cambios Recientes (2026-11-04 — Lotes, proveedores y ubicaciones para Appits)
+
+Appits necesita saber dónde está cada repuesto (bodega → zona → bin), de qué proveedor vino
+cada lote y en qué orden de servicio se usó. Contrato completo con ejemplos reales:
+`doc/integracion/trazabilidad_lotes_ubicaciones.md`. Todo campo nuevo es opcional.
+
+- **Identidad del lote = producto + proveedor + número.** El mismo número de dos proveedores
+  son dos lotes con saldos separados. `batches` deja de ser único por producto+número.
+- **Clave del saldo** = producto + zona + bin + lote + proveedor (índice único con `COALESCE`
+  a un UUID nulo). El proveedor **solo entra en la clave si hay lote**: así una salida sin lote
+  nunca se vuelve ambigua. Con lote repetido de dos proveedores, salida/ajuste/traslado sin
+  `supplier_id` → 409 pidiéndolo.
+- **Las entradas crean el lote** (`ensure_batch`) cuando `track_lots`, heredando proveedor y vencimiento.
+- **`track_lots = true` exige `lot_number`** en entradas, ajustes y traslados (422). Las reservas no.
+- **Reservas reescritas** (`app/services/reservation.py`): cada ítem se reparte en
+  `reservation_allocations` (FEFO → FIFO, varios lotes si uno no alcanza), con las filas de
+  saldo bloqueadas `FOR UPDATE`. Confirmar despacha en ese orden, crea su `Transaction` y deja
+  un ISSUE por lote/bin con `reference_id` = el de la reserva (la orden de Appits).
+  Confirmar más de lo reservado → 422.
+- **Validaciones compartidas** en `app/services/traceability.py` (bin de la zona y del tenant,
+  proveedor del tenant, lote obligatorio, consecutivo `next_document_number`).
+- **Consecutivo de entradas** `E-000058` por tenant (`transactions.document_number` +
+  `document_sequences`, UPSERT que bloquea hasta el commit). La 015 numera las entradas históricas.
+- **Filtros nuevos**: saldos por `lot_number`/`bin_id`/`supplier_id`; ledger por
+  `lot_number`/`zone_id`/`bin_id`/`supplier_id`/`reference_id`/`document_number`/`date_from`/`date_to`.
+
+**Bugs corregidos de paso**
+- La confirmación hacía `UPDATE stock_balances … WHERE product_id AND zone_id`: con varios
+  lotes en la zona descontaba la cantidad de **todas** las filas. Igual el bucle de expiración
+  de `main.py` (ahora llama a `expire_reservation`).
+- `GET /v1/ledger` daba 500 si había reservas confirmadas: escribían el ledger sin
+  `transaction_id` y la respuesta lo exigía. Ahora es `UUID | None` (solo filas antiguas).
+
+**Reservas anteriores a la 015** no tienen asignaciones: se confirman/cancelan/expiran contra
+el saldo de producto + zona (`_item_allocations`, rama legacy).
+
+**Pendiente detectado (no corregido)**: los conteos cíclicos (`app/services/cycle_count.py`)
+siguen leyendo y escribiendo saldos por producto + zona. Con varios lotes o bins en la zona
+fijan **todas** esas filas al valor contado. Antes no se notaba porque había una fila por zona.
 
 ## Glossary
 

@@ -6,8 +6,10 @@ from app.api.deps import require_super_admin, AuthContext
 from app.core.database import AsyncSessionLocal, set_tenant_context
 from app.schemas.catalog import ProductCreate, ProductResponse, ProductUpdate
 from app.schemas.common import PaginatedResponse
+from app.schemas.supplier import SupplierResponse
 from app.services import product as product_service
 from app.services import category as category_service
+from app.services import supplier as supplier_service
 
 router = APIRouter(tags=["Admin — Productos"])
 
@@ -96,6 +98,24 @@ async def admin_delete_product(
         await product_service.deactivate_product(
             product_id=product_id, db=session, tenant_id=tenant_id
         )
+
+
+@router.get(
+    "/tenants/{tenant_id}/suppliers",
+    response_model=list[SupplierResponse],
+    summary="Listar proveedores de un tenant",
+    description=(
+        "Todos los proveedores del tenant, activos e inactivos: un lote antiguo puede venir "
+        "de un proveedor ya dado de baja y el panel debe poder nombrarlo."
+    ),
+)
+async def admin_list_suppliers(
+    tenant_id: str,
+    _auth: AuthContext = Depends(require_super_admin),
+):
+    async with AsyncSessionLocal() as session:
+        await set_tenant_context(session, tenant_id)
+        return await supplier_service.list_suppliers(db=session, tenant_id=tenant_id, is_active=None)
 
 
 @router.get(

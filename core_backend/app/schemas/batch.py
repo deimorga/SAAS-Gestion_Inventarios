@@ -8,6 +8,13 @@ from pydantic import BaseModel, Field
 class BatchCreate(BaseModel):
     product_id: UUID = Field(..., description="Producto al que pertenece el lote")
     batch_number: str = Field(..., min_length=1, max_length=100, description="Número/código de lote")
+    supplier_id: UUID | None = Field(
+        None,
+        description=(
+            "Opcional. Proveedor del lote; debe pertenecer al tenant. El número de lote es único por "
+            "producto + proveedor: dos proveedores pueden traer el mismo número."
+        ),
+    )
     manufactured_date: date | None = Field(None, description="Fecha de fabricación")
     expiry_date: date | None = Field(None, description="Fecha de vencimiento")
     initial_qty: Decimal = Field(..., gt=0, description="Cantidad inicial del lote")
@@ -19,6 +26,7 @@ class BatchResponse(BaseModel):
     tenant_id: UUID
     product_id: UUID
     batch_number: str
+    supplier_id: UUID | None = None
     manufactured_date: date | None
     expiry_date: date | None
     initial_qty: Decimal

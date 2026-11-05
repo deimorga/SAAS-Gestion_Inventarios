@@ -26,6 +26,7 @@ async def _expire_reservations_loop() -> None:
     """
     from sqlalchemy import text
     from app.core.database import AsyncSessionLocal, set_tenant_context
+    from app.services.reservation import expire_reservation
 
     while True:
         await asyncio.sleep(60)
@@ -49,25 +50,9 @@ async def _expire_reservations_loop() -> None:
                     ).fetchall()
 
                     for row in expired_rows:
-                        await session.execute(
-                            text(
-                                "UPDATE stock_balances sb "
-                                "SET reserved_qty = sb.reserved_qty - ri.quantity, "
-                                "    available_qty = sb.available_qty + ri.quantity, "
-                                "    version = sb.version + 1, "
-                                "    updated_at = now() "
-                                "FROM reservation_items ri "
-                                "WHERE ri.reservation_id = :rid "
-                                "  AND sb.product_id = ri.product_id "
-                                "  AND sb.zone_id = ri.zone_id "
-                                "  AND sb.tenant_id = ri.tenant_id"
-                            ),
-                            {"rid": str(row.id)},
-                        )
-                        await session.execute(
-                            text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
-                            {"id": str(row.id)},
-                        )
+                        # Libera lote por lote lo que la reserva apartó (no todas las
+                        # filas del producto en la zona, como hacía el UPDATE anterior).
+                        await expire_reservation(session, tid, str(row.id))
                         expired_any = True
 
                 if expired_any:

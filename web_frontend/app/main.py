@@ -6,7 +6,7 @@ import httpx
 from fastapi import Request
 from nicegui import app, ui
 
-from app import api
+from app import api, theme
 from app.api import SessionExpiredError
 
 STORAGE_SECRET = os.getenv("STORAGE_SECRET", "dev-secret-change-in-prod")
@@ -49,15 +49,15 @@ def _copy_js(value: str) -> str:
     """
 
 
-def _info_row(label: str, value: str, copyable: bool = False) -> None:
-    with ui.row().classes("items-center gap-2 w-full"):
-        ui.label(label).classes("text-xs font-semibold text-gray-500 uppercase w-36 shrink-0")
-        ui.label(value).classes("text-sm text-gray-800 break-all flex-1")
+def _info_row(label: str, value: str, copyable: bool = False, mono: bool = False) -> None:
+    with ui.row().classes("items-center gap-2 w-full no-wrap"):
+        ui.label(label).classes("mn-label w-36 shrink-0")
+        ui.label(value).classes(f"text-sm break-all flex-1 {'mn-mono' if mono else ''}")
         if copyable:
             ui.button(
                 icon="content_copy",
                 on_click=lambda v=value: ui.run_javascript(_copy_js(v)),
-            ).props("flat dense size=xs").tooltip("Copiar")
+            ).props('flat round dense size=sm color=grey-7 aria-label="Copiar"').tooltip("Copiar")
 
 
 def _err_msg(ex: Exception) -> str:
@@ -74,31 +74,58 @@ def _err_msg(ex: Exception) -> str:
     return str(ex)
 
 
-def _tier_badge(tier: str) -> None:
-    colors = {"STARTER": "blue", "PROFESSIONAL": "purple", "ENTERPRISE": "orange"}
-    color = colors.get(tier, "grey")
-    ui.badge(tier, color=color)
+def _row_location(row: dict) -> dict:
+    """Lote, bin y proveedor de una fila de saldo, para que el ajuste caiga sobre ESA fila.
+
+    Sin esto el ajuste iba al stock sin lote ni ubicación del producto en la zona,
+    aunque se hubiera elegido la fila de un lote o de un estante concreto.
+    """
+    return {
+        "lot_number": row.get("lot_number"),
+        "bin_id": row.get("bin_id"),
+        "supplier_id": row.get("supplier_id"),
+    }
+
+
+def _row_label(row: dict) -> str:
+    """Texto que identifica una fila de saldo en los diálogos: producto · almacén · zona · lote · ubicación."""
+    parts = [row.get("product_name", ""), row.get("warehouse_name", ""), row.get("zone_name", "")]
+    if row.get("lot_number"):
+        parts.append(f"Lote {row['lot_number']}")
+    if row.get("bin_code"):
+        parts.append(f"Ubicación {row['bin_code']}")
+    return " · ".join(part for part in parts if part)
 
 
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @ui.page("/login")
 def page_login(request: Request) -> None:
-    ui.colors(primary="#1a56db")
+    theme.apply_theme()
     # IP del navegador, para que el límite de intentos del API cuente por origen
     # real y no por la IP del portal, que es la misma para todos.
     forwarded = request.headers.get("x-forwarded-for", "")
     browser_ip = forwarded.split(",")[-1].strip() or (request.client.host if request.client else "")
 
-    with ui.card().classes("absolute-center w-96 shadow-2xl p-8"):
-        ui.label("MicroNuba").classes("text-3xl font-bold text-primary text-center")
-        ui.label("Portal de Administración").classes("text-sm text-gray-500 text-center mb-6")
+    # Centra la tarjeta en la pantalla (el contenedor de página es una columna flex)
+    ui.query(".nicegui-content").classes("items-center justify-center").style(
+        "min-height:85vh;max-width:none"
+    )
 
+    with ui.card().classes("w-96 max-w-full p-8 gap-0"):
+        with ui.row().classes("items-center gap-3 no-wrap mb-8"):
+            with ui.element("div").classes("mn-logo"):
+                ui.icon("cloud").classes("text-[22px]")
+            with ui.column().classes("gap-0"):
+                ui.label("MicroNuba").classes("mn-brand-name")
+                ui.label("Portal de administración").classes("mn-brand-sub")
+
+        ui.label("Iniciar sesión").classes("mn-h2 mb-4")
         email_input = ui.input("Email", placeholder="admin@micronuba.com").classes("w-full")
         password_input = ui.input(
             "Contraseña", password=True, password_toggle_button=True
-        ).classes("w-full mt-2")
-        error_label = ui.label("").classes("text-red-500 text-sm hidden")
+        ).classes("w-full mt-4")
+        error_label = ui.label("").classes("text-negative text-sm hidden mt-2")
 
         async def do_login() -> None:
             error_label.classes(remove="hidden")
@@ -143,7 +170,7 @@ def page_login(request: Request) -> None:
             'color="primary" unelevated'
         )
 
-    ui.label(f"API: {API_BASE_URL}").classes("fixed bottom-2 right-4 text-xs text-gray-400")
+    ui.label(f"API: {API_BASE_URL}").classes("fixed bottom-2 right-4 text-xs mn-muted")
 
 
 # ─── Tenants list ─────────────────────────────────────────────────────────────
@@ -151,17 +178,21 @@ def page_login(request: Request) -> None:
 @ui.page("/tenants")
 async def page_tenants() -> None:
     _guard()
-    ui.colors(primary="#1a56db")
+    await theme.shell("tenants")
 
-    with ui.row().classes("w-full items-center justify-between mb-6"):
-        ui.label("Tenants").classes("text-2xl font-bold")
-        with ui.row().classes("items-center gap-2"):
-            ui.label(app.storage.user.get("user_email", "")).classes("text-sm text-gray-500")
+    with ui.row().classes("w-full items-end justify-between gap-4"):
+        with ui.column().classes("gap-1"):
+            ui.label("Tenants").classes("mn-h1")
+            subtitle = ui.label("").classes("mn-muted")
+        with ui.row().classes("items-center gap-3"):
+            search = ui.input(placeholder="Buscar por nombre o slug").props(
+                'dense clearable aria-label="Buscar tenant"'
+            ).classes("w-72 max-w-full")
+            with search.add_slot("prepend"):
+                ui.icon("search")
             ui.button(
-                "Salir",
-                icon="logout",
-                on_click=lambda: (app.storage.user.clear(), ui.navigate.to("/login")),
-            ).props("flat dense color=negative")
+                "Nuevo tenant", icon="add", on_click=lambda: create_dialog.open()
+            ).props("unelevated color=primary no-caps")
 
     created: dict[str, Any] = {}
 
@@ -170,9 +201,7 @@ async def page_tenants() -> None:
 
     with result_dialog:
         with ui.card().classes("w-[520px] p-6"):
-            ui.label("✅ Tenant creado exitosamente").classes(
-                "text-lg font-bold text-green-600 mb-4"
-            )
+            ui.label("Tenant creado").classes("text-lg font-bold text-positive mb-4")
 
             @ui.refreshable
             def result_content() -> None:
@@ -328,10 +357,6 @@ async def page_tenants() -> None:
                 ui.button("Confirmar", on_click=do_suspend).props('unelevated color="negative"')
 
     # ── Table ─────────────────────────────────────────────────────────────────
-    with ui.row().classes("w-full justify-between items-center mb-3"):
-        ui.label("").classes("text-sm text-gray-500")
-        ui.button("+ Nuevo Tenant", on_click=create_dialog.open).props('unelevated color="primary"')
-
     table_container = ui.column().classes("w-full")
 
     async def refresh_table() -> None:
@@ -350,59 +375,103 @@ async def page_tenants() -> None:
                 items = [t for t in all_items if not t.get("parent_tenant_id")]
                 total: int = len(items)
 
+                subtitle.set_text(
+                    f"{theme.plural(total, 'tenant')} "
+                    f"{'registrado' if total == 1 else 'registrados'}" if items else "Sin tenants"
+                )
+
                 if not items:
-                    with ui.card().classes("w-full p-8 text-center"):
-                        ui.icon("business", size="4rem").classes("text-gray-300")
-                        ui.label("Sin tenants registrados").classes("text-gray-500 mt-2")
-                        ui.label("Crea el primero con el botón superior.").classes("text-sm text-gray-400")
+                    with ui.column().classes("w-full items-center p-12 gap-1"):
+                        ui.icon("apartment", size="3rem").classes("text-slate-300")
+                        ui.label("Sin tenants registrados").classes("font-semibold mt-2")
+                        ui.label("Crea el primero con el botón «Nuevo tenant».").classes("text-sm mn-muted")
                     return
 
-                ui.label(f"{total} tenant(s) registrado(s)").classes("text-sm text-gray-500 mb-2")
-
                 columns = [
-                    {"name": "name", "label": "Nombre", "field": "name", "align": "left", "sortable": True},
-                    {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
-                    {"name": "sedes", "label": "Sedes", "field": "sedes_str", "align": "center"},
-                    {"name": "tier", "label": "Tier", "field": "subscription_tier", "align": "center", "sortable": True},
-                    {"name": "status", "label": "Estado", "field": "status_str", "align": "center"},
-                    {"name": "created_at", "label": "Creado", "field": "created_str", "align": "center", "sortable": True},
-                    {"name": "actions", "label": "", "field": "id", "align": "center"},
+                    # `search_str` junta nombre y slug: es lo que filtra el buscador y ordena la columna.
+                    {"name": "name", "label": "Tenant", "field": "search_str", "align": "left", "sortable": True},
+                    {"name": "sedes", "label": "Sedes", "field": "sedes_str", "align": "left"},
+                    {"name": "tier", "label": "Plan", "field": "subscription_tier", "align": "left", "sortable": True},
+                    {"name": "status", "label": "Estado", "field": "status_str", "align": "left"},
+                    {"name": "created_at", "label": "Creado", "field": "created_at", "align": "left", "sortable": True},
+                    {"name": "actions", "label": "", "field": "id", "align": "right"},
                 ]
 
                 rows = [
                     {
                         **t,
+                        "search_str": f"{t['name']} {t['slug']}",
                         "status_str": "Activo" if t["is_active"] else "Suspendido",
-                        "created_str": t["created_at"][:10],
+                        "created_str": theme.fmt_date(t["created_at"]),
                         "sedes_str": str(sedes_por_padre.get(str(t["id"]), 0) or "—"),
                     }
                     for t in items
                 ]
 
-                tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-sm")
-                tbl.add_slot("body-cell-status", """
+                tbl = ui.table(
+                    columns=columns, rows=rows, row_key="id", pagination=50
+                ).classes("w-full")
+                tbl.props('hide-bottom no-data-label="Ningún tenant coincide con la búsqueda"')
+                tbl.bind_filter_from(search, "value")
+                tbl.add_slot("body-cell-name", """
                     <q-td :props="props">
-                        <q-badge :color="props.row.is_active ? 'positive' : 'grey'" :label="props.value" />
+                        <a :href="'/tenants/' + props.row.id" class="mn-tenant-link">
+                            <span class="mn-avatar"
+                                  style="width:38px;height:38px;border-radius:10px;font-size:16px">
+                                {{ props.row.name.charAt(0).toUpperCase() }}
+                            </span>
+                            <span class="mn-tenant-text">
+                                <span class="mn-tenant-name">{{ props.row.name }}</span>
+                                <span class="mn-mono mn-tenant-slug">{{ props.row.slug }}</span>
+                            </span>
+                        </a>
                     </q-td>
                 """)
                 tbl.add_slot("body-cell-tier", """
                     <q-td :props="props">
-                        <q-badge
-                            :color="props.value === 'ENTERPRISE' ? 'orange' : props.value === 'PROFESSIONAL' ? 'purple' : 'blue'"
-                            :label="props.value" />
+                        <span class="mn-pill"
+                              :class="props.value === 'ENTERPRISE' ? 'mn-pill--enterprise'
+                                      : props.value === 'PROFESSIONAL' ? 'mn-pill--pro' : ''">
+                            {{ props.value }}
+                        </span>
                     </q-td>
+                """)
+                tbl.add_slot("body-cell-status", """
+                    <q-td :props="props">
+                        <span class="mn-pill" :class="props.row.is_active ? 'mn-pill--ok' : ''">
+                            <span class="mn-dot"></span>{{ props.value }}
+                        </span>
+                    </q-td>
+                """)
+                tbl.add_slot("body-cell-created_at", """
+                    <q-td :props="props" class="mn-muted">{{ props.row.created_str }}</q-td>
                 """)
                 tbl.add_slot("body-cell-actions", """
                     <q-td :props="props">
-                        <q-btn flat dense icon="open_in_new" color="primary" size="sm"
-                               @click="$parent.$emit('view', props.row)" class="mr-1" />
-                        <q-btn flat dense icon="block" size="sm"
-                               :color="props.row.is_active ? 'negative' : 'positive'"
-                               @click="$parent.$emit('suspend', props.row)" />
+                        <q-btn flat round dense icon="chevron_right" color="grey-7"
+                               :href="'/tenants/' + props.row.id"
+                               :aria-label="'Abrir ' + props.row.name" />
+                        <q-btn flat round dense icon="more_vert" color="grey-7"
+                               :aria-label="'Más acciones para ' + props.row.name">
+                            <q-menu auto-close>
+                                <q-list style="min-width: 180px">
+                                    <q-item clickable @click="$parent.$emit('edit', props.row)">
+                                        <q-item-section avatar><q-icon name="edit" /></q-item-section>
+                                        <q-item-section>Editar</q-item-section>
+                                    </q-item>
+                                    <q-item clickable @click="$parent.$emit('suspend', props.row)">
+                                        <q-item-section avatar>
+                                            <q-icon :name="props.row.is_active ? 'pause_circle' : 'play_circle'" />
+                                        </q-item-section>
+                                        <q-item-section>
+                                            {{ props.row.is_active ? 'Suspender' : 'Reactivar' }}
+                                        </q-item-section>
+                                    </q-item>
+                                </q-list>
+                            </q-menu>
+                        </q-btn>
                     </q-td>
                 """)
-
-                tbl.on("view", lambda e: ui.navigate.to(f"/tenants/{e.args['id']}"))
 
                 def on_edit(e: Any) -> None:
                     editing_tenant.clear()
@@ -441,13 +510,6 @@ async def page_tenants() -> None:
 @ui.page("/tenants/{tenant_id}")
 async def page_tenant_detail(tenant_id: str) -> None:
     _guard()
-    ui.colors(primary="#1a56db")
-
-    with ui.row().classes("w-full items-center gap-3 mb-6"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/tenants")).props(
-            "flat round"
-        )
-        ui.label("Detalle del Tenant").classes("text-2xl font-bold")
 
     try:
         tenant = await api.get_tenant(_token(), tenant_id)
@@ -460,94 +522,86 @@ async def page_tenant_detail(tenant_id: str) -> None:
         all_keys = (await api.get_tenant_keys(_token(), tenant_id)).get("data", [])
         keys_data: dict = {"data": all_keys}
     except httpx.HTTPStatusError as e:
+        await theme.shell("tenants")
         ui.notify(f"Error {e.response.status_code} cargando tenant.", type="negative")
         return
     except Exception as ex:
+        await theme.shell("tenants")
         ui.notify(f"Error: {ex}", type="negative")
         return
 
-    with ui.row().classes("w-full gap-4 items-start"):
-        with ui.card().classes("flex-1 p-5"):
-            with ui.row().classes("items-center justify-between mb-4"):
-                ui.label("Información").classes("text-lg font-bold")
-                with ui.row().classes("gap-2 items-center"):
-                    _tier_badge(tenant["subscription_tier"])
-                    status_color = "positive" if tenant["is_active"] else "grey"
-                    status_label = "Activo" if tenant["is_active"] else "Suspendido"
-                    ui.badge(status_label, color=status_color)
+    await theme.shell("resumen", tenant_id=tenant_id, tenant=tenant)
 
-            with ui.column().classes("w-full gap-2"):
-                _info_row("ID", str(tenant["id"]), copyable=True)
-                _info_row("Nombre", tenant["name"])
-                _info_row("Slug", tenant["slug"], copyable=True)
-                if tenant.get("tax_id"):
-                    _info_row("NIT", tenant["tax_id"])
-                if tenant.get("parent_tenant_id"):
-                    with ui.row().classes("items-center gap-2 w-full"):
-                        ui.label("Sede de").classes("text-xs font-semibold text-gray-500 uppercase w-36 shrink-0")
-                        ui.link(
-                            parent_name, f"/tenants/{tenant['parent_tenant_id']}"
-                        ).classes("text-sm text-primary")
-                _info_row("Creado", tenant["created_at"][:19].replace("T", " "))
+    es_sede = bool(tenant.get("parent_tenant_id"))
+    is_active = tenant["is_active"]
 
-        with ui.card().classes("w-64 p-5"):
-            ui.label("Acciones").classes("text-lg font-bold mb-3")
+    # ── Suspender / reactivar ─────────────────────────────────────────────────────
+    suspend_dialog = ui.dialog()
+    with suspend_dialog:
+        with ui.card().classes("p-5 w-80"):
+            action = "reactivar" if not is_active else "suspender"
+            ui.label(f"¿{action.capitalize()} este tenant?").classes("font-bold mb-2")
+            ui.label(
+                "Suspender impide el login de sus usuarios pero no revoca API Keys activas."
+                if is_active
+                else "El tenant y sus usuarios podrán volver a operar."
+            ).classes("text-sm mn-muted mb-4")
 
-            suspend_dialog = ui.dialog()
-            with suspend_dialog:
-                with ui.card().classes("p-5 w-80"):
-                    action = "reactivar" if not tenant["is_active"] else "suspender"
-                    ui.label(f"¿{action.capitalize()} este tenant?").classes("font-bold mb-2")
-                    ui.label(
-                        "Suspender impide el login de sus usuarios pero no revoca API Keys activas."
-                        if tenant["is_active"]
-                        else "El tenant y sus usuarios podrán volver a operar."
-                    ).classes("text-sm text-gray-600 mb-4")
+            async def do_toggle() -> None:
+                try:
+                    await api.update_tenant(_token(), tenant_id, {"is_active": not is_active})
+                    suspend_dialog.close()
+                    ui.navigate.to(f"/tenants/{tenant_id}")
+                except Exception as ex:
+                    ui.notify(f"Error: {ex}", type="negative")
 
-                    async def do_toggle() -> None:
-                        try:
-                            await api.update_tenant(
-                                _token(), tenant_id, {"is_active": not tenant["is_active"]}
-                            )
-                            suspend_dialog.close()
-                            ui.navigate.to(f"/tenants/{tenant_id}")
-                        except Exception as ex:
-                            ui.notify(f"Error: {ex}", type="negative")
+            with ui.row().classes("justify-end gap-2"):
+                ui.button("Cancelar", on_click=suspend_dialog.close).props("flat no-caps")
+                ui.button(action.capitalize(), on_click=do_toggle).props(
+                    f'unelevated no-caps color="{"warning" if is_active else "positive"}"'
+                )
 
-                    with ui.row().classes("justify-end gap-2"):
-                        ui.button("Cancelar", on_click=suspend_dialog.close).props("flat")
-                        ui.button(
-                            action.capitalize(),
-                            on_click=do_toggle,
-                        ).props(
-                            f'unelevated color="{"warning" if tenant["is_active"] else "positive"}"'
-                        )
+    # ── Cabecera ──────────────────────────────────────────────────────────────────
+    if app.storage.user.get("role") == "super_admin":
+        theme.breadcrumb(("Tenants", "/tenants"), (tenant["name"], None))
 
-            btn_label = "⏸ Suspender tenant" if tenant["is_active"] else "▶ Reactivar tenant"
-            btn_color = "warning" if tenant["is_active"] else "positive"
-            ui.button(btn_label, on_click=suspend_dialog.open).classes("w-full").props(
-                f'flat color="{btn_color}"'
-            )
-            ui.separator().classes("my-2")
-            ui.button(
-                "📦 Gestionar Productos",
-                on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/products"),
-            ).classes("w-full").props('unelevated color="primary"')
-            ui.button(
-                "📊 Gestionar Stock",
-                on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/stock"),
-            ).classes("w-full mt-2").props('unelevated color="secondary"')
-            ui.button(
-                "🏭 Gestionar Almacenes",
-                on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/warehouses"),
-            ).classes("w-full mt-2").props('outline color="primary"')
+    with ui.row().classes("w-full items-center justify-between gap-4"):
+        with ui.row().classes("items-center gap-4 no-wrap"):
+            theme.avatar(tenant["name"], 56)
+            with ui.column().classes("gap-1"):
+                with ui.row().classes("items-center gap-3"):
+                    ui.label(tenant["name"]).classes("mn-h1")
+                    theme.tier_pill(tenant["subscription_tier"])
+                    theme.status_pill(is_active)
+                ui.label(f"Creado el {theme.fmt_date(tenant['created_at'])}").classes("mn-muted")
+        ui.button(
+            "Suspender tenant" if is_active else "Reactivar tenant",
+            icon="pause" if is_active else "play_arrow",
+            on_click=suspend_dialog.open,
+        ).props(f'outline no-caps color="{"warning" if is_active else "positive"}"')
+
+    # ── Información ───────────────────────────────────────────────────────────────
+    with ui.card().classes("mn-card w-full"):
+        with ui.element("div").classes("mn-card-head"):
+            ui.label("Información").classes("mn-h2")
+        with ui.column().classes("mn-card-body gap-3"):
+            _info_row("ID", str(tenant["id"]), copyable=True, mono=True)
+            _info_row("Nombre", tenant["name"])
+            _info_row("Slug", tenant["slug"], copyable=True, mono=True)
+            if tenant.get("tax_id"):
+                _info_row("NIT", tenant["tax_id"])
+            if es_sede:
+                with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                    ui.label("Sede de").classes("mn-label w-36 shrink-0")
+                    ui.link(
+                        parent_name, f"/tenants/{tenant['parent_tenant_id']}"
+                    ).classes("text-sm text-primary")
+            _info_row("Creado", theme.fmt_datetime(tenant["created_at"]))
 
     # ── Sedes ─────────────────────────────────────────────────────────────────────
     # Cada sede es un tenant APARTE (catálogo y stock propios, aislados por RLS)
     # que apunta a este tenant con parent_tenant_id. Se crea con todo listo:
     # admin, bodega física con sus zonas y la API key para Appits.
-    ui.separator().classes("my-5")
-
     sede_created: dict = {}
 
     sede_result_dialog = ui.dialog().props("persistent")
@@ -655,13 +709,17 @@ async def page_tenant_detail(tenant_id: str) -> None:
         sede_err.set_text("")
         sede_dialog.open()
 
-    es_sede = bool(tenant.get("parent_tenant_id"))
-    with ui.row().classes("w-full items-center justify-between mb-3"):
-        ui.label("Sedes").classes("text-lg font-bold")
-        if not es_sede:
-            ui.button("+ Nueva Sede", on_click=open_sede_dialog).props('unelevated color="primary"')
-
-    sedes_container = ui.column().classes("w-full")
+    with ui.card().classes("mn-card w-full"):
+        with ui.element("div").classes("mn-card-head"):
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Sedes").classes("mn-h2")
+                sedes_count = ui.label("").classes("mn-count")
+                sedes_count.set_visibility(False)
+            if not es_sede:
+                ui.button("Nueva sede", icon="add", on_click=open_sede_dialog).props(
+                    "unelevated color=primary no-caps"
+                )
+        sedes_container = ui.column().classes("w-full gap-0")
 
     async def load_sedes() -> None:
         sedes_container.clear()
@@ -669,27 +727,31 @@ async def page_tenant_detail(tenant_id: str) -> None:
             if es_sede:
                 ui.label(
                     f"Este tenant es una sede de {parent_name}. Las sedes solo se crean desde el tenant principal."
-                ).classes("text-sm text-gray-500")
+                ).classes("text-sm mn-muted w-full px-6 pb-5")
                 return
             try:
                 sedes = await api.list_sedes(_token(), tenant_id)
             except Exception as ex:
                 ui.notify(f"Error cargando sedes: {_err_msg(ex)}", type="negative")
                 return
+            sedes_count.set_text(str(len(sedes)))
+            sedes_count.set_visibility(True)
             if not sedes:
-                with ui.card().classes("w-full p-6 text-center"):
-                    ui.icon("store", size="3rem").classes("text-gray-300")
-                    ui.label("Sin sedes").classes("text-gray-500 mt-2")
+                with ui.column().classes("w-full items-center p-8 gap-1").style(
+                    "border-top:1px solid var(--mn-line)"
+                ):
+                    ui.icon("store", size="2.5rem").classes("text-slate-300")
+                    ui.label("Sin sedes").classes("font-semibold mt-1")
                     ui.label(
                         "Una sede es un tenant aparte con su propio inventario, ligado a este tenant."
-                    ).classes("text-sm text-gray-400")
+                    ).classes("text-sm mn-muted text-center")
                 return
             columns = [
                 {"name": "name", "label": "Nombre", "field": "name", "align": "left"},
                 {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
                 {"name": "external", "label": "Origen", "field": "external_str", "align": "left"},
-                {"name": "status", "label": "Estado", "field": "status_str", "align": "center"},
-                {"name": "actions", "label": "", "field": "id", "align": "center"},
+                {"name": "status", "label": "Estado", "field": "status_str", "align": "left"},
+                {"name": "actions", "label": "", "field": "id", "align": "right"},
             ]
             rows = [
                 {
@@ -702,25 +764,35 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 }
                 for s in sedes
             ]
-            tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-sm")
+            tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full")
+            tbl.props("hide-bottom")
+            tbl.add_slot("body-cell-name", """
+                <q-td :props="props"><span class="font-semibold">{{ props.value }}</span></q-td>
+            """)
+            tbl.add_slot("body-cell-slug", """
+                <q-td :props="props"><span class="mn-mono mn-muted" style="font-size:13px">{{ props.value }}</span></q-td>
+            """)
+            tbl.add_slot("body-cell-external", """
+                <q-td :props="props"><span class="mn-pill">{{ props.value }}</span></q-td>
+            """)
             tbl.add_slot("body-cell-status", """
                 <q-td :props="props">
-                    <q-badge :color="props.row.is_active ? 'positive' : 'grey'" :label="props.value" />
+                    <span class="mn-pill" :class="props.row.is_active ? 'mn-pill--ok' : ''">
+                        <span class="mn-dot"></span>{{ props.value }}
+                    </span>
                 </q-td>
             """)
             tbl.add_slot("body-cell-actions", """
                 <q-td :props="props">
-                    <q-btn flat dense icon="open_in_new" color="primary" size="sm"
-                           @click="$parent.$emit('view', props.row)" />
+                    <q-btn flat round dense icon="open_in_new" color="grey-7"
+                           :href="'/tenants/' + props.row.id"
+                           :aria-label="'Abrir la sede ' + props.row.name" />
                 </q-td>
             """)
-            tbl.on("view", lambda e: ui.navigate.to(f"/tenants/{e.args['id']}"))
 
     await load_sedes()
 
     # ── API Keys ──────────────────────────────────────────────────────────────────
-    ui.separator().classes("my-5")
-
     new_key_result: dict = {}
 
     # Diálogo: mostrar key_secret (solo una vez tras la creación)
@@ -812,101 +884,413 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 ui.button("Cancelar", on_click=create_key_dialog.close).props("flat")
                 ui.button("Crear Key", on_click=do_create_key).props('unelevated color="primary"')
 
-    with ui.row().classes("items-center justify-between mb-3"):
-        ui.label("API Keys").classes("text-lg font-bold")
-        ui.button("+ Nueva API Key", on_click=create_key_dialog.open).props('unelevated color="primary"')
-
-    key_container = ui.column().classes("w-full gap-3")
+    with ui.card().classes("mn-card w-full"):
+        with ui.element("div").classes("mn-card-head"):
+            with ui.row().classes("items-center gap-2"):
+                ui.label("API Keys").classes("mn-h2")
+                keys_count = ui.label("").classes("mn-count")
+            ui.button("Nueva API key", icon="add", on_click=create_key_dialog.open).props(
+                "unelevated color=primary no-caps"
+            )
+        key_container = ui.column().classes("w-full gap-0")
 
     async def build_keys() -> None:
         key_container.clear()
         current_keys = keys_data.get("data", [])
+        # Las revocadas no se descartan (son historial), pero van plegadas para que no tapen
+        # las que sí están en uso.
+        active_keys = [k for k in current_keys if k.get("is_active", False)]
+        revoked_keys = [k for k in current_keys if not k.get("is_active", False)]
+        keys_count.set_text(f"{len(active_keys)} {'activa' if len(active_keys) == 1 else 'activas'}")
         with key_container:
             if not current_keys:
-                with ui.card().classes("w-full p-6 text-center"):
-                    ui.icon("vpn_key", size="3rem").classes("text-gray-300")
-                    ui.label("Sin API Keys").classes("text-gray-500 mt-2")
-                return
-            for k in current_keys:
-                is_active = k.get("is_active", False)
-                with ui.card().classes(
-                    f"w-full p-4 {'border-l-4 border-green-500' if is_active else 'opacity-60'}"
+                with ui.column().classes("w-full items-center p-8 gap-1").style(
+                    "border-top:1px solid var(--mn-line)"
                 ):
-                    with ui.row().classes("items-center justify-between w-full"):
-                        with ui.column().classes("gap-1 flex-1"):
-                            with ui.row().classes("items-center gap-2"):
-                                ui.label(k.get("name", "Sin nombre")).classes("font-semibold")
-                                if is_active:
-                                    ui.badge("Activa", color="positive")
-                                else:
-                                    ui.badge("Revocada", color="grey")
+                    ui.icon("vpn_key", size="2.5rem").classes("text-slate-300")
+                    ui.label("Sin API Keys").classes("font-semibold mt-1")
+                return
 
-                            _info_row("Key prefix", k.get("key_id", ""), copyable=True)
-                            _info_row("Scopes", ", ".join(k.get("scopes", [])))
-                            expires = k.get("expires_at")
-                            _info_row(
-                                "Expira",
-                                expires[:10] if expires else "Sin vencimiento",
-                            )
-                            _info_row("ID (UUID)", str(k.get("id", "")), copyable=True)
-                            _info_row("Creada", k.get("created_at", "")[:10])
+            def render_key(k: dict) -> None:
+                is_active = k.get("is_active", False)
+                with ui.row().classes(f"mn-key w-full no-wrap items-start gap-4 {'' if is_active else 'mn-key--off'}"):
+                    with ui.element("div").classes("mn-key-icon"):
+                        ui.icon("vpn_key").classes("text-[20px]")
 
-                        if is_active:
-                            revoke_dialog = ui.dialog()
-                            with revoke_dialog:
-                                with ui.card().classes("p-5 w-80"):
-                                    ui.label("¿Revocar esta API Key?").classes(
-                                        "font-bold text-red-600 mb-2"
-                                    )
-                                    ui.label(
-                                        "Esta acción es permanente. Las integraciones que usen esta key dejarán de funcionar."
-                                    ).classes("text-sm text-gray-600 mb-4")
+                    with ui.column().classes("gap-3 flex-1 min-w-0"):
+                        with ui.row().classes("items-center gap-3"):
+                            ui.label(k.get("name", "Sin nombre")).classes("font-semibold text-[15px]")
+                            theme.status_pill(is_active, "Activa", "Revocada")
 
-                                    async def do_revoke(
-                                        kid: str = str(k["id"]),
-                                        dlg: ui.dialog = revoke_dialog,
-                                    ) -> None:
-                                        try:
-                                            await api.revoke_key(_token(), tenant_id, kid)
-                                            dlg.close()
-                                            ui.notify("API Key revocada.", type="positive")
-                                            fresh = await api.get_tenant_keys(_token(), tenant_id)
-                                            keys_data["data"] = fresh.get("data", [])
-                                            await build_keys()
-                                        except Exception as ex:
-                                            ui.notify(f"Error: {ex}", type="negative")
-
-                                    with ui.row().classes("justify-end gap-2"):
-                                        ui.button("Cancelar", on_click=revoke_dialog.close).props(
-                                            "flat"
-                                        )
-                                        ui.button("Revocar", on_click=do_revoke).props(
-                                            'unelevated color="negative"'
-                                        )
-
+                        with ui.row().classes("items-center gap-1 no-wrap"):
+                            ui.label(k.get("key_id", "")).classes("mn-mono text-[13px] break-all")
                             ui.button(
-                                "Revocar", icon="block", on_click=revoke_dialog.open
-                            ).props("flat color=negative dense")
+                                icon="content_copy",
+                                on_click=lambda v=k.get("key_id", ""): ui.run_javascript(_copy_js(v)),
+                            ).props('flat round dense size=sm color=grey-7 aria-label="Copiar prefijo de la key"')
+
+                        with ui.row().classes("gap-2"):
+                            for scope in k.get("scopes", []):
+                                ui.label(scope).classes("mn-chip")
+
+                        expires = k.get("expires_at")
+                        with ui.row().classes("items-center gap-x-5 gap-y-1 text-[13px] mn-muted"):
+                            ui.label(f"Expira: {theme.fmt_date(expires) if expires else 'sin vencimiento'}")
+                            ui.label(f"Creada: {theme.fmt_date(k.get('created_at'))}")
+                            with ui.row().classes("items-center gap-1 no-wrap"):
+                                ui.label(f"ID {k.get('id', '')}").classes("mn-mono break-all")
+                                ui.button(
+                                    icon="content_copy",
+                                    on_click=lambda v=str(k.get("id", "")): ui.run_javascript(_copy_js(v)),
+                                ).props('flat round dense size=xs color=grey-7 aria-label="Copiar ID de la key"')
+
+                    if is_active:
+                        revoke_dialog = ui.dialog()
+                        with revoke_dialog:
+                            with ui.card().classes("p-5 w-80"):
+                                ui.label("¿Revocar esta API Key?").classes(
+                                    "font-bold text-negative mb-2"
+                                )
+                                ui.label(
+                                    "Esta acción es permanente. Las integraciones que usen esta key dejarán de funcionar."
+                                ).classes("text-sm mn-muted mb-4")
+
+                                async def do_revoke(
+                                    kid: str = str(k["id"]),
+                                    dlg: ui.dialog = revoke_dialog,
+                                ) -> None:
+                                    try:
+                                        await api.revoke_key(_token(), tenant_id, kid)
+                                        dlg.close()
+                                        ui.notify("API Key revocada.", type="positive")
+                                        fresh = await api.get_tenant_keys(_token(), tenant_id)
+                                        keys_data["data"] = fresh.get("data", [])
+                                        await build_keys()
+                                    except Exception as ex:
+                                        ui.notify(f"Error: {ex}", type="negative")
+
+                                with ui.row().classes("justify-end gap-2"):
+                                    ui.button("Cancelar", on_click=revoke_dialog.close).props(
+                                        "flat no-caps"
+                                    )
+                                    ui.button("Revocar", on_click=do_revoke).props(
+                                        'unelevated no-caps color="negative"'
+                                    )
+
+                        ui.button(
+                            "Revocar", icon="block", on_click=revoke_dialog.open
+                        ).props("outline no-caps color=negative").classes("shrink-0")
+
+            for k in active_keys:
+                render_key(k)
+            if not active_keys:
+                ui.label("No hay API keys activas.").classes(
+                    "w-full px-6 pb-5 text-sm mn-muted"
+                ).style("border-top:1px solid var(--mn-line);padding-top:20px")
+            if revoked_keys:
+                with ui.expansion(f"Revocadas ({len(revoked_keys)})", icon="block").classes(
+                    "mn-revoked w-full"
+                ):
+                    for k in revoked_keys:
+                        render_key(k)
 
     await build_keys()
 
 
-# ─── Products page ───────────────────────────────────────────────────────────
+# ─── Productos + existencias (opción 1) ───────────────────────────────────────
+# Catálogo y existencias en una sola pantalla: cada producto muestra cuánto hay
+# disponible en total y, al abrirlo, en qué zona, ubicación y lote está.
+# La página /stock sigue existiendo con sus propios diálogos (theme.SHOW_STOCK_PAGE).
+
+async def _load_locations(tenant_id: str) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Almacenes del tenant y sus zonas: para los selectores y para nombrar cada saldo."""
+    warehouses: list[dict] = []
+    zones_by_wh: dict[str, list[dict]] = {}
+    try:
+        warehouses = await api.list_warehouses(_token(), tenant_id)
+        for wh in warehouses:
+            try:
+                zones_by_wh[wh["id"]] = await api.list_zones(_token(), tenant_id, wh["id"])
+            except Exception:
+                zones_by_wh[wh["id"]] = []
+    except Exception as ex:
+        ui.notify(f"Error cargando almacenes: {_err_msg(ex)}", type="negative")
+    return warehouses, zones_by_wh
+
+
+async def _all_balances(tenant_id: str) -> list[dict]:
+    """Todos los saldos del tenant (el endpoint pagina de a 200 como máximo)."""
+    items: list[dict] = []
+    page = 1
+    while True:
+        data = await api.list_stock(_token(), tenant_id, page=page, page_size=200)
+        items.extend(data.get("data", []))
+        if page >= data.get("pagination", {}).get("total_pages", 1):
+            return items
+        page += 1
+
+
+def _zone_type_label(zone_type: str | None) -> str:
+    """'RECEIVING' → 'Recepción' (la etiqueta de la pantalla de Almacenes, sin la explicación)."""
+    if not zone_type:
+        return "—"
+    return ZONE_TYPES.get(zone_type, zone_type).split(" — ")[0]
+
+
+def _qty(value: Any) -> str:
+    """'96.0000' → '96'; '9.5000' → '9.5'."""
+    number = float(value or 0)
+    if number == int(number):
+        return f"{number:,.0f}"
+    return f"{number:,.2f}".rstrip("0")
+
+
+class _StockDialogs:
+    """Entrada de stock, ajuste general y ajuste de una fila de saldo concreta."""
+
+    def __init__(self, tenant_id: str, warehouses: list[dict], zones_by_wh: dict[str, list[dict]], on_done) -> None:
+        self.tenant_id = tenant_id
+        self.zones_by_wh = zones_by_wh
+        self.on_done = on_done
+        self.row: dict = {}
+        wh_options = {w["id"]: w["name"] for w in warehouses}
+
+        # ── Entrada de stock ──────────────────────────────────────────────────
+        self.receipt = ui.dialog().props("persistent")
+        with self.receipt, ui.card().classes("w-[480px] p-6"):
+            ui.label("Entrada de stock").classes("text-xl font-bold mb-2")
+            self.r_wh = ui.select(
+                wh_options, label="Almacén *", on_change=lambda e: self._fill_zones(e.value, self.r_zone)
+            ).classes("w-full")
+            self.r_zone = ui.select({}, label="Zona *").classes("w-full mt-2")
+            self.r_product = ui.select({}, label="Producto *", with_input=True).classes("w-full mt-2")
+            self.r_qty = ui.number("Cantidad *", min=0.0001, step=1, format="%.0f").classes("w-full mt-2")
+            self.r_cost = ui.number("Costo unitario *", min=0, step=100, format="%.2f").classes(
+                "w-full mt-2"
+            ).props('prefix="$"')
+            self.r_lot = ui.input("Lote", placeholder="Obligatorio si el producto maneja lotes").classes("w-full mt-2")
+            self.r_ref = ui.input("Referencia", value="CARGA-MANUAL").classes("w-full mt-2")
+            self.r_err = ui.label("").classes("text-negative text-sm mt-1")
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=self.receipt.close).props("flat no-caps")
+                ui.button("Registrar entrada", on_click=self._do_receipt).props("unelevated no-caps color=primary")
+
+        # ── Ajuste general (cantidad real contada) ───────────────────────────
+        self.adjust = ui.dialog().props("persistent")
+        with self.adjust, ui.card().classes("w-[480px] p-6"):
+            ui.label("Ajustar stock").classes("text-xl font-bold mb-1")
+            ui.label("Ingresa la cantidad REAL que hay físicamente.").classes("text-sm mn-muted mb-2")
+            self.a_wh = ui.select(
+                wh_options, label="Almacén *", on_change=lambda e: self._fill_zones(e.value, self.a_zone)
+            ).classes("w-full")
+            self.a_zone = ui.select({}, label="Zona *").classes("w-full mt-2")
+            self.a_product = ui.select({}, label="Producto *", with_input=True).classes("w-full mt-2")
+            self.a_qty = ui.number("Cantidad real *", min=0, step=1, format="%.0f").classes("w-full mt-2")
+            self.a_lot = ui.input("Lote", placeholder="Obligatorio si el producto maneja lotes").classes("w-full mt-2")
+            self.a_ref = ui.input("Referencia", value="AJUSTE-MANUAL").classes("w-full mt-2")
+            self.a_err = ui.label("").classes("text-negative text-sm mt-1")
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=self.adjust.close).props("flat no-caps")
+                ui.button("Registrar ajuste", on_click=self._do_adjust).props("unelevated no-caps color=warning")
+
+        # ── Ajuste de una fila (zona + ubicación + lote concretos) ────────────
+        self.row_dialog = ui.dialog().props("persistent")
+        with self.row_dialog, ui.card().classes("w-[420px] p-6"):
+            ui.label("Ajustar cantidad").classes("text-xl font-bold mb-1")
+            self.row_info = ui.label("").classes("text-sm mn-muted mb-4")
+            self.row_qty = ui.number("Nueva cantidad real *", min=0, step=1, format="%.0f").classes("w-full")
+            self.row_err = ui.label("").classes("text-negative text-sm mt-1")
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=self.row_dialog.close).props("flat no-caps")
+                ui.button("Guardar", on_click=self._do_row).props("unelevated no-caps color=primary")
+
+    def _fill_zones(self, warehouse_id: str | None, zone_select: ui.select) -> None:
+        zone_select.options = {z["id"]: z["name"] for z in self.zones_by_wh.get(warehouse_id or "", [])}
+        zone_select.value = None
+        zone_select.update()
+
+    def set_products(self, products: list[dict]) -> None:
+        options = {p["id"]: f"{p['sku']} — {p['name']}" for p in products}
+        for select in (self.r_product, self.a_product):
+            select.options = options
+            select.update()
+
+    def open_receipt(self) -> None:
+        self.r_err.set_text("")
+        self.receipt.open()
+
+    def open_adjust(self) -> None:
+        self.a_err.set_text("")
+        self.adjust.open()
+
+    def open_row(self, row: dict) -> None:
+        self.row = dict(row)
+        self.row_info.set_text(_row_label(row))
+        self.row_qty.set_value(float(row.get("physical_qty") or 0))
+        self.row_err.set_text("")
+        self.row_dialog.open()
+
+    async def _do_receipt(self) -> None:
+        self.r_err.set_text("")
+        if not all([self.r_wh.value, self.r_zone.value, self.r_product.value, self.r_qty.value]) or self.r_cost.value is None:
+            self.r_err.set_text("Todos los campos marcados con * son obligatorios.")
+            return
+        payload = {
+            "reference_type": "INITIAL_STOCK",
+            "reference_id": self.r_ref.value or "CARGA-MANUAL",
+            "reason_code": "CARGA_INICIAL",
+            "warehouse_id": self.r_wh.value,
+            "zone_id": self.r_zone.value,
+            "items": [{
+                "product_id": self.r_product.value,
+                "quantity": float(self.r_qty.value),
+                "unit_cost": float(self.r_cost.value),
+                "lot_number": (self.r_lot.value or "").strip() or None,
+            }],
+        }
+        try:
+            await api.stock_receipt(_token(), self.tenant_id, payload)
+            ui.notify("Entrada registrada.", type="positive")
+            self.receipt.close()
+            await self.on_done()
+        except Exception as ex:
+            self.r_err.set_text(_err_msg(ex))
+
+    async def _do_adjust(self) -> None:
+        self.a_err.set_text("")
+        if not all([self.a_wh.value, self.a_zone.value, self.a_product.value]) or self.a_qty.value is None:
+            self.a_err.set_text("Todos los campos marcados con * son obligatorios.")
+            return
+        payload = {
+            "reference_id": self.a_ref.value or "AJUSTE-MANUAL",
+            "reason_code": "CONTEO_FISICO",
+            "warehouse_id": self.a_wh.value,
+            "zone_id": self.a_zone.value,
+            "items": [{
+                "product_id": self.a_product.value,
+                "new_qty": float(self.a_qty.value),
+                "lot_number": (self.a_lot.value or "").strip() or None,
+            }],
+        }
+        try:
+            await api.stock_adjustment(_token(), self.tenant_id, payload)
+            ui.notify("Ajuste registrado.", type="positive")
+            self.adjust.close()
+            await self.on_done()
+        except Exception as ex:
+            self.a_err.set_text(_err_msg(ex))
+
+    async def _do_row(self) -> None:
+        self.row_err.set_text("")
+        if self.row_qty.value is None:
+            self.row_err.set_text("Ingresa la cantidad.")
+            return
+        payload = {
+            "reference_id": "AJUSTE-MANUAL",
+            "reason_code": "CONTEO_FISICO",
+            "warehouse_id": self.row["warehouse_id"],
+            "zone_id": self.row["zone_id"],
+            "items": [{
+                "product_id": self.row["product_id"],
+                "new_qty": float(self.row_qty.value),
+                **_row_location(self.row),
+            }],
+        }
+        try:
+            await api.stock_adjustment(_token(), self.tenant_id, payload)
+            ui.notify("Stock actualizado.", type="positive")
+            self.row_dialog.close()
+            await self.on_done()
+        except Exception as ex:
+            self.row_err.set_text(_err_msg(ex))
+
+
+_PRODUCT_ROW_SLOT = """
+<q-tr :props="props">
+    <q-td key="name" :props="props">
+        <div class="mn-tenant-text">
+            <span class="mn-tenant-name">{{ props.row.name }}</span>
+            <span class="mn-mono mn-tenant-slug">{{ props.row.sku }}</span>
+        </div>
+    </q-td>
+    <q-td key="base_uom" :props="props">{{ props.row.base_uom }}</q-td>
+    <q-td key="price" :props="props">{{ props.row.price_str }}</q-td>
+    <q-td key="available" :props="props">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+            <span class="mn-pill" :class="props.row.available_num > 0 ? 'mn-pill--ok' : ''">{{ props.row.available }}</span>
+            <span v-if="props.row.reserved_label" class="text-xs mn-muted">{{ props.row.reserved_label }}</span>
+        </div>
+    </q-td>
+    <q-td key="where" :props="props" class="mn-muted">{{ props.row.where }}</q-td>
+    <q-td key="actions" :props="props" class="text-no-wrap">
+        <q-btn flat round dense icon="edit" color="primary" :aria-label="'Editar ' + props.row.name"
+               @click="$parent.$emit('edit', props.row)" />
+        <q-btn flat round dense icon="delete" color="negative" :aria-label="'Desactivar ' + props.row.name"
+               @click="$parent.$emit('delete', props.row)" />
+        <q-btn flat round dense color="grey-7" :icon="props.expand ? 'expand_less' : 'expand_more'"
+               :aria-expanded="props.expand ? 'true' : 'false'"
+               :aria-label="'Ver dónde está ' + props.row.name"
+               @click="props.expand = !props.expand" />
+    </q-td>
+</q-tr>
+<q-tr v-show="props.expand" :props="props" class="mn-locs-tr">
+    <q-td colspan="100%" class="mn-locs-cell">
+        <div class="mn-locs">
+            <template v-if="props.row.locations.length">
+                <div class="mn-loc mn-loc--head">
+                    <span>Almacén</span><span>Zona</span><span>Ubicación</span><span>Lote</span><span>Proveedor</span>
+                    <span class="num">Físico</span><span class="num">Reservado</span><span class="num">Disponible</span><span></span>
+                </div>
+                <div v-for="loc in props.row.locations" :key="loc.id" class="mn-loc">
+                    <span>
+                        <span>{{ loc.warehouse_name }}</span>
+                        <span v-if="loc.warehouse_code" class="sub mn-mono">{{ loc.warehouse_code }}</span>
+                    </span>
+                    <span>
+                        <span>{{ loc.zone_type_label }}</span>
+                        <span v-if="loc.zone_detail" class="sub">{{ loc.zone_detail }}</span>
+                    </span>
+                    <span>
+                        <span :class="loc.bin_code ? 'mn-mono' : 'mn-muted'">{{ loc.bin_str }}</span>
+                        <span v-if="loc.bin_name" class="sub">{{ loc.bin_name }}</span>
+                    </span>
+                    <span :class="loc.lot_number ? 'mn-mono' : 'mn-muted'">{{ loc.lot_str }}</span>
+                    <span>
+                        <span :class="loc.supplier_id ? '' : 'mn-muted'">{{ loc.supplier_name }}</span>
+                        <span v-if="loc.supplier_code" class="sub mn-mono">{{ loc.supplier_code }}</span>
+                    </span>
+                    <span class="num">{{ loc.physical }}</span>
+                    <span class="num">{{ loc.reserved }}</span>
+                    <span class="avail">{{ loc.available }}</span>
+                    <q-btn flat round dense icon="tune" color="warning" :aria-label="'Ajustar ' + loc.where_label"
+                           @click="$parent.$emit('adjust_loc', loc)" />
+                </div>
+            </template>
+            <div v-else class="mn-locs-empty">Sin existencias. Usa «Entrada de stock» para registrar la primera.</div>
+        </div>
+    </q-td>
+</q-tr>
+"""
+
 
 @ui.page("/tenants/{tenant_id}/products")
 async def page_products(tenant_id: str) -> None:
     _guard()
-    ui.colors(primary="#1a56db")
+    tenant = await theme.shell("products", tenant_id=tenant_id)
+    theme.sub_header(tenant, tenant_id, "Productos")
+    subtitle = ui.label("").classes("mn-muted").style("margin-top:-16px")
 
-    with ui.row().classes("w-full items-center gap-3 mb-4"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}")).props("flat round")
-        ui.label("Productos").classes("text-2xl font-bold")
+    warehouses, zones_by_wh = await _load_locations(tenant_id)
+    wh_names = {str(w["id"]).lower(): w["name"] for w in warehouses}
+    zone_names = {str(z["id"]).lower(): z["name"] for zones in zones_by_wh.values() for z in zones}
+    whs_by_id = {str(w["id"]).lower(): w for w in warehouses}
+    zones_by_id = {str(z["id"]).lower(): z for zones in zones_by_wh.values() for z in zones}
+    try:
+        suppliers_by_id = {str(s["id"]).lower(): s for s in await api.list_suppliers(_token(), tenant_id)}
+    except Exception:
+        suppliers_by_id = {}
 
-    search_input = ui.input(placeholder="Buscar por SKU o nombre...").classes("w-full mb-4").props('outlined dense clearable')
-
-    product_container = ui.column().classes("w-full")
-
-    # ── Dialogs ───────────────────────────────────────────────────────────────
+    # ── Diálogos de producto (ficha del catálogo) ─────────────────────────────
     editing: dict = {}
 
     product_dialog = ui.dialog().props("persistent")
@@ -947,9 +1331,9 @@ async def page_products(tenant_id: str) -> None:
                         ui.notify("Producto creado.", type="positive")
                     product_dialog.close()
                     editing.clear()
-                    await load_products()
+                    await load_products(search_input.value)
                 except Exception as ex:
-                    dialog_err.set_text(f"Error: {ex}")
+                    dialog_err.set_text(_err_msg(ex))
 
             with ui.row().classes("w-full justify-end mt-4 gap-2"):
                 ui.button("Cancelar", on_click=lambda: (product_dialog.close(), editing.clear())).props("flat")
@@ -967,104 +1351,179 @@ async def page_products(tenant_id: str) -> None:
                     await api.delete_product(_token(), tenant_id, deleting["id"])
                     confirm_delete.close()
                     ui.notify("Producto desactivado.", type="positive")
-                    await load_products()
+                    await load_products(search_input.value)
                 except Exception as ex:
-                    ui.notify(f"Error: {ex}", type="negative")
+                    ui.notify(_err_msg(ex), type="negative")
 
             with ui.row().classes("justify-end gap-2"):
                 ui.button("Cancelar", on_click=confirm_delete.close).props("flat")
                 ui.button("Desactivar", on_click=do_delete).props('unelevated color="negative"')
 
-    # ── Table ─────────────────────────────────────────────────────────────────
+    def open_new_product() -> None:
+        editing.clear()
+        sku_in.set_value("")
+        name_in.set_value("")
+        price_in.set_value(None)
+        uom_in.set_value("")
+        desc_in.set_value("")
+        dialog_title.set_text("Nuevo Producto")
+        dialog_err.set_text("")
+        sku_in.props(remove="readonly")
+        product_dialog.open()
+
+    def on_edit(e: Any) -> None:
+        row = e.args
+        editing.update({"id": row["id"]})
+        sku_in.set_value(row["sku"])
+        name_in.set_value(row["name"])
+        price_in.set_value(float(row["sale_price"]) if row.get("sale_price") else None)
+        uom_in.set_value(row["base_uom"])
+        desc_in.set_value(row.get("description") or "")
+        dialog_title.set_text("Editar Producto")
+        dialog_err.set_text("")
+        sku_in.props("readonly")
+        product_dialog.open()
+
+    def on_delete(e: Any) -> None:
+        deleting.update({"id": e.args["id"]})
+        confirm_delete.open()
+
+    # ── Diálogos de stock (entrada, ajuste, ajuste de una fila) ───────────────
+    stock = _StockDialogs(tenant_id, warehouses, zones_by_wh, on_done=lambda: load_products(search_input.value))
+
+    # ── Barra de acciones ─────────────────────────────────────────────────────
+    with ui.row().classes("w-full items-center gap-3"):
+        search_input = ui.input(placeholder="Buscar por SKU o nombre…").props(
+            'dense clearable aria-label="Buscar producto"'
+        ).classes("flex-1 min-w-[240px]")
+        with search_input.add_slot("prepend"):
+            ui.icon("search")
+        ui.button("Entrada de stock", icon="add", on_click=stock.open_receipt).props("outline no-caps color=primary")
+        ui.button("Ajustar stock", icon="tune", on_click=stock.open_adjust).props("outline no-caps color=warning")
+        ui.button("Nuevo producto", icon="add", on_click=open_new_product).props("unelevated no-caps color=primary")
+
+    product_container = ui.column().classes("w-full gap-0")
+
+    columns = [
+        {"name": "name", "label": "Producto", "field": "name", "align": "left", "sortable": True},
+        {"name": "base_uom", "label": "Unidad", "field": "base_uom", "align": "left"},
+        {"name": "price", "label": "Precio", "field": "price_str", "align": "left"},
+        {"name": "available", "label": "Disponible", "field": "available_num", "align": "left", "sortable": True},
+        {"name": "where", "label": "Dónde está", "field": "where", "align": "left"},
+        {"name": "actions", "label": "", "field": "id", "align": "right"},
+    ]
+
+    def build_rows(products: list[dict], balances: list[dict]) -> list[dict]:
+        by_product: dict[str, list[dict]] = {}
+        for b in balances:
+            # Un saldo en cero (p. ej. tras «poner en 0») no es una ubicación con stock.
+            if float(b["physical_qty"]) == 0 and float(b["reserved_qty"]) == 0:
+                continue
+            by_product.setdefault(str(b["product_id"]).lower(), []).append(b)
+
+        rows = []
+        for p in products:
+            product_name = f"{p['sku']} — {p['name']}"
+            locs = []
+            for b in by_product.get(str(p["id"]).lower(), []):
+                zone_name = zone_names.get(str(b["zone_id"]).lower(), "—")
+                bin_str = b.get("bin_code") or "Sin ubicar"
+                zone = zones_by_id.get(str(b["zone_id"]).lower(), {})
+                wh = whs_by_id.get(str(b["warehouse_id"]).lower(), {})
+                supplier = suppliers_by_id.get(str(b.get("supplier_id") or "").lower())
+                if supplier:
+                    supplier_name, supplier_code = supplier["name"], supplier.get("code", "")
+                elif b.get("supplier_id"):
+                    supplier_name, supplier_code = "Proveedor no encontrado", str(b["supplier_id"])[:8]
+                else:
+                    supplier_name, supplier_code = "—", ""
+                locs.append({
+                    **b,
+                    "warehouse_code": wh.get("code", ""),
+                    "zone_type_label": _zone_type_label(zone.get("zone_type")),
+                    "zone_detail": " · ".join(x for x in (zone.get("name"), zone.get("code")) if x),
+                    "bin_name": b.get("bin_name") or "",
+                    "supplier_name": supplier_name,
+                    "supplier_code": supplier_code,
+                    "product_name": product_name,
+                    "warehouse_name": wh_names.get(str(b["warehouse_id"]).lower(), "—"),
+                    "zone_name": zone_name,
+                    "bin_str": bin_str,
+                    "lot_str": b.get("lot_number") or "—",
+                    "expiry_str": theme.fmt_date(b.get("expiry_date")) if b.get("expiry_date") else "—",
+                    "physical": _qty(b["physical_qty"]),
+                    "reserved": _qty(b["reserved_qty"]),
+                    "available": _qty(b["available_qty"]),
+                    "where_label": f"{zone_name} · {bin_str}",
+                    "is_next": False,
+                })
+            locs.sort(key=lambda loc: (loc["zone_name"], loc.get("bin_code") or "", loc.get("lot_number") or ""))
+            # Marca el lote que sale primero (el que vence antes), como hace la reserva FEFO.
+            dated = [loc for loc in locs if loc.get("expiry_date")]
+            if dated:
+                min(dated, key=lambda loc: loc["expiry_date"])["is_next"] = True
+
+            available = sum(float(loc["available_qty"]) for loc in locs)
+            reserved = sum(float(loc["reserved_qty"]) for loc in locs)
+            lots = {loc["lot_number"] for loc in locs if loc.get("lot_number")}
+            if not locs:
+                where = "Sin existencias"
+            else:
+                where = theme.plural(len(locs), "ubicación", "ubicaciones")
+                if lots:
+                    where += f" · {theme.plural(len(lots), 'lote')}"
+            rows.append({
+                **p,
+                "price_str": f"${float(p['sale_price']):,.0f}" if p.get("sale_price") else "—",
+                "available_num": available,
+                "available": _qty(available),
+                "reserved_label": f"{_qty(reserved)} reservada{'s' if reserved != 1 else ''}" if reserved else "",
+                "where": where,
+                "locations": locs,
+            })
+        return rows
+
     async def load_products(search: str | None = None) -> None:
         product_container.clear()
+        try:
+            data = await api.list_products(_token(), tenant_id, search=search or None, page_size=200)
+            products = data.get("data", [])
+            total = data.get("pagination", {}).get("total_items", 0)
+            balances = await _all_balances(tenant_id)
+        except Exception as ex:
+            ui.notify(f"Error cargando productos: {_err_msg(ex)}", type="negative")
+            return
+
+        if not search:
+            stock.set_products(products)
+        subtitle.set_text(
+            f"{theme.plural(total, 'producto')} · el disponible suma todas las ubicaciones. "
+            "Abre un producto para ver dónde está."
+        )
+
         with product_container:
-            try:
-                data = await api.list_products(_token(), tenant_id, search=search or None)
-                items = data.get("data", [])
-                total = data.get("pagination", {}).get("total_items", 0)
+            if not products:
+                with ui.column().classes("w-full items-center p-12 gap-1"):
+                    ui.icon("inventory_2", size="3rem").classes("text-slate-300")
+                    ui.label("Sin productos").classes("font-semibold mt-2")
+                return
 
-                with ui.row().classes("w-full justify-between items-center mb-2"):
-                    ui.label(f"{total} producto(s)").classes("text-sm text-gray-500")
-                    ui.button("+ Nuevo Producto", on_click=lambda: (
-                        editing.clear(),
-                        sku_in.set_value(""),
-                        name_in.set_value(""),
-                        price_in.set_value(None),
-                        uom_in.set_value(""),
-                        desc_in.set_value(""),
-                        dialog_title.set_text("Nuevo Producto"),
-                        dialog_err.set_text(""),
-                        sku_in.props(remove="readonly"),
-                        product_dialog.open(),
-                    )).props('unelevated color="primary"')
+            grouped: dict[str, list[dict]] = {}
+            for row in build_rows(products, balances):
+                cat = row.get("category")
+                grouped.setdefault(cat.get("name") if cat else "Sin Categoría", []).append(row)
 
-                if not items:
-                    with ui.card().classes("w-full p-8 text-center"):
-                        ui.icon("inventory_2", size="4rem").classes("text-gray-300")
-                        ui.label("Sin productos").classes("text-gray-500 mt-2")
-                    return
-
-                columns = [
-                    {"name": "sku", "label": "SKU", "field": "sku", "align": "left", "sortable": True},
-                    {"name": "name", "label": "Nombre", "field": "name", "align": "left", "sortable": True},
-                    {"name": "base_uom", "label": "UOM", "field": "base_uom", "align": "center"},
-                    {"name": "sale_price", "label": "Precio", "field": "sale_price_str", "align": "right"},
-                    {"name": "actions", "label": "", "field": "id", "align": "center"},
-                ]
-
-                def on_edit(e: Any) -> None:
-                    row = e.args
-                    editing.update({"id": row["id"]})
-                    sku_in.set_value(row["sku"])
-                    name_in.set_value(row["name"])
-                    price_in.set_value(float(row["sale_price"]) if row.get("sale_price") else None)
-                    uom_in.set_value(row["base_uom"])
-                    desc_in.set_value(row.get("description") or "")
-                    dialog_title.set_text("Editar Producto")
-                    dialog_err.set_text("")
-                    sku_in.props("readonly")
-                    product_dialog.open()
-
-                def on_delete(e: Any) -> None:
-                    deleting.update({"id": e.args["id"]})
-                    confirm_delete.open()
-
-                grouped_items = {}
-                for p in items:
-                    cat = p.get("category")
-                    cat_name = cat.get("name") if cat else "Sin Categoría"
-                    grouped_items.setdefault(cat_name, []).append(p)
-                
-                sorted_cats = sorted(grouped_items.keys(), key=lambda x: (x == "Sin Categoría", x))
-
-                for cat_name in sorted_cats:
-                    prods = grouped_items[cat_name]
-                    with ui.expansion(f"{cat_name} ({len(prods)})", icon="category").classes("w-full bg-white shadow-sm mb-2").props("default-opened"):
-                        rows = [
-                            {
-                                **p,
-                                "sale_price_str": f"${float(p['sale_price']):,.0f}" if p.get("sale_price") else "—",
-                            }
-                            for p in prods
-                        ]
-                        tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-none border-t")
-                        tbl.add_slot(
-                            "body-cell-actions",
-                            """
-                            <q-td :props="props">
-                                <q-btn flat dense icon="edit" color="primary" size="sm"
-                                       @click="$parent.$emit('edit', props.row)" class="mr-1"/>
-                                <q-btn flat dense icon="delete" color="negative" size="sm"
-                                       @click="$parent.$emit('delete', props.row)" />
-                            </q-td>
-                            """,
-                        )
-                        tbl.on("edit", on_edit)
-                        tbl.on("delete", on_delete)
-
-            except Exception as ex:
-                ui.notify(f"Error cargando productos: {ex}", type="negative")
+            sorted_cats = sorted(grouped.keys(), key=lambda x: (x == "Sin Categoría", x))
+            for i, cat_name in enumerate(sorted_cats):
+                with theme.category_expansion(cat_name, len(grouped[cat_name]), i):
+                    tbl = ui.table(columns=columns, rows=grouped[cat_name], row_key="id").classes(
+                        "w-full shadow-none border-t"
+                    )
+                    tbl.props("wrap-cells")
+                    tbl.add_slot("body", _PRODUCT_ROW_SLOT)
+                    tbl.on("edit", on_edit)
+                    tbl.on("delete", on_delete)
+                    tbl.on("adjust_loc", lambda e: stock.open_row(e.args))
 
     search_input.on("keydown.enter", lambda: load_products(search_input.value))
     search_input.on("clear", lambda: load_products(None))
@@ -1077,11 +1536,8 @@ async def page_products(tenant_id: str) -> None:
 @ui.page("/tenants/{tenant_id}/stock")
 async def page_stock(tenant_id: str) -> None:
     _guard()
-    ui.colors(primary="#1a56db")
-
-    with ui.row().classes("w-full items-center gap-3 mb-4"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}")).props("flat round")
-        ui.label("Stock").classes("text-2xl font-bold")
+    tenant = await theme.shell("stock", tenant_id=tenant_id)
+    theme.sub_header(tenant, tenant_id, "Stock")
 
     # Cargar almacenes y productos para los formularios
     warehouses: list[dict] = []
@@ -1125,6 +1581,7 @@ async def page_stock(tenant_id: str) -> None:
             ).classes("w-full mt-2")
             r_qty = ui.number("Cantidad *", min=0.0001, step=1, format="%.0f").classes("w-full mt-2")
             r_cost = ui.number("Costo unitario *", min=0, step=100, format="%.2f").classes("w-full mt-2").props('prefix="$"')
+            r_lot = ui.input("Lote", placeholder="Obligatorio si el producto maneja lotes").classes("w-full mt-2")
             r_ref = ui.input("Referencia", value="CARGA-MANUAL").classes("w-full mt-2")
             r_err = ui.label("").classes("text-red-500 text-sm mt-1")
 
@@ -1147,7 +1604,12 @@ async def page_stock(tenant_id: str) -> None:
                     "reason_code": "CARGA_INICIAL",
                     "warehouse_id": r_wh.value,
                     "zone_id": r_zone.value,
-                    "items": [{"product_id": r_product.value, "quantity": float(r_qty.value), "unit_cost": float(r_cost.value)}],
+                    "items": [{
+                        "product_id": r_product.value,
+                        "quantity": float(r_qty.value),
+                        "unit_cost": float(r_cost.value),
+                        "lot_number": (r_lot.value or "").strip() or None,
+                    }],
                 }
                 try:
                     await api.stock_receipt(_token(), tenant_id, payload)
@@ -1155,7 +1617,7 @@ async def page_stock(tenant_id: str) -> None:
                     receipt_dialog.close()
                     await load_stock()
                 except Exception as ex:
-                    r_err.set_text(f"Error: {ex}")
+                    r_err.set_text(_err_msg(ex))
 
             with ui.row().classes("w-full justify-end mt-4 gap-2"):
                 ui.button("Cancelar", on_click=receipt_dialog.close).props("flat")
@@ -1175,6 +1637,7 @@ async def page_stock(tenant_id: str) -> None:
                 label="Producto *",
             ).classes("w-full mt-2")
             a_qty = ui.number("Cantidad real *", min=0, step=1, format="%.0f").classes("w-full mt-2")
+            a_lot = ui.input("Lote", placeholder="Obligatorio si el producto maneja lotes").classes("w-full mt-2")
             a_ref = ui.input("Referencia", value="AJUSTE-MANUAL").classes("w-full mt-2")
             a_err = ui.label("").classes("text-red-500 text-sm mt-1")
 
@@ -1196,7 +1659,11 @@ async def page_stock(tenant_id: str) -> None:
                     "reason_code": "CONTEO_FISICO",
                     "warehouse_id": a_wh.value,
                     "zone_id": a_zone.value,
-                    "items": [{"product_id": a_product.value, "new_qty": float(a_qty.value)}],
+                    "items": [{
+                        "product_id": a_product.value,
+                        "new_qty": float(a_qty.value),
+                        "lot_number": (a_lot.value or "").strip() or None,
+                    }],
                 }
                 try:
                     await api.stock_adjustment(_token(), tenant_id, payload)
@@ -1204,7 +1671,7 @@ async def page_stock(tenant_id: str) -> None:
                     adjust_dialog.close()
                     await load_stock()
                 except Exception as ex:
-                    a_err.set_text(f"Error: {ex}")
+                    a_err.set_text(_err_msg(ex))
 
             with ui.row().classes("w-full justify-end mt-4 gap-2"):
                 ui.button("Cancelar", on_click=adjust_dialog.close).props("flat")
@@ -1222,8 +1689,8 @@ async def page_stock(tenant_id: str) -> None:
                 with ui.row().classes("w-full justify-between items-center mb-2"):
                     ui.label(f"{total} saldo(s) de stock").classes("text-sm text-gray-500")
                     with ui.row().classes("gap-2"):
-                        ui.button("+ Entrada de Stock", on_click=receipt_dialog.open).props('unelevated color="primary"')
-                        ui.button("⚖ Ajustar Stock", on_click=adjust_dialog.open).props('unelevated color="warning"')
+                        ui.button("Entrada de stock", icon="add", on_click=receipt_dialog.open).props('unelevated no-caps color="primary"')
+                        ui.button("Ajustar stock", icon="tune", on_click=adjust_dialog.open).props('unelevated no-caps color="warning"')
 
                 if not items:
                     with ui.card().classes("w-full p-8 text-center"):
@@ -1239,6 +1706,8 @@ async def page_stock(tenant_id: str) -> None:
                     {"name": "product", "label": "Producto", "field": "product_name", "align": "left"},
                     {"name": "warehouse", "label": "Almacén", "field": "warehouse_name", "align": "left"},
                     {"name": "zone", "label": "Zona", "field": "zone_name", "align": "left"},
+                    {"name": "lot", "label": "Lote", "field": "lot_str", "align": "left"},
+                    {"name": "bin", "label": "Ubicación", "field": "bin_str", "align": "left"},
                     {"name": "physical", "label": "Físico", "field": "physical_qty", "align": "right"},
                     {"name": "reserved", "label": "Reservado", "field": "reserved_qty", "align": "right"},
                     {"name": "available", "label": "Disponible", "field": "available_qty", "align": "right"},
@@ -1265,7 +1734,11 @@ async def page_stock(tenant_id: str) -> None:
                                 "reason_code": "CONTEO_FISICO",
                                 "warehouse_id": edit_stock_row["warehouse_id"],
                                 "zone_id": edit_stock_row["zone_id"],
-                                "items": [{"product_id": edit_stock_row["product_id"], "new_qty": float(edit_stock_qty.value)}],
+                                "items": [{
+                                    "product_id": edit_stock_row["product_id"],
+                                    "new_qty": float(edit_stock_qty.value),
+                                    **_row_location(edit_stock_row),
+                                }],
                             }
                             try:
                                 await api.stock_adjustment(_token(), tenant_id, payload)
@@ -1273,7 +1746,7 @@ async def page_stock(tenant_id: str) -> None:
                                 ui.notify("Stock actualizado.", type="positive")
                                 await load_stock()
                             except Exception as ex:
-                                edit_stock_err.set_text(f"Error: {ex}")
+                                edit_stock_err.set_text(_err_msg(ex))
 
                         with ui.row().classes("w-full justify-end mt-4 gap-2"):
                             ui.button("Cancelar", on_click=edit_stock_dialog.close).props("flat")
@@ -1283,9 +1756,7 @@ async def page_stock(tenant_id: str) -> None:
                     row = e.args
                     edit_stock_row.clear()
                     edit_stock_row.update(row)
-                    edit_stock_info.set_text(
-                        f"{row['product_name']} · {row['warehouse_name']} · {row['zone_name']}"
-                    )
+                    edit_stock_info.set_text(_row_label(row))
                     edit_stock_qty.set_value(float(row["physical_qty"]))
                     edit_stock_err.set_text("")
                     edit_stock_dialog.open()
@@ -1295,7 +1766,8 @@ async def page_stock(tenant_id: str) -> None:
                 with delete_stock_dialog:
                     with ui.card().classes("p-5 w-80"):
                         ui.label("¿Poner stock en 0?").classes("font-bold text-red-600 mb-2")
-                        ui.label("Se registrará un ajuste a cantidad 0 para este producto.").classes("text-sm text-gray-600 mb-4")
+                        ui.label("Se registrará un ajuste a cantidad 0 para:").classes("text-sm text-gray-600")
+                        delete_stock_info = ui.label("").classes("text-sm font-semibold mb-4")
 
                         async def do_delete_stock() -> None:
                             try:
@@ -1304,14 +1776,18 @@ async def page_stock(tenant_id: str) -> None:
                                     "reason_code": "CONTEO_FISICO",
                                     "warehouse_id": delete_stock_row["warehouse_id"],
                                     "zone_id": delete_stock_row["zone_id"],
-                                    "items": [{"product_id": delete_stock_row["product_id"], "new_qty": 0}],
+                                    "items": [{
+                                        "product_id": delete_stock_row["product_id"],
+                                        "new_qty": 0,
+                                        **_row_location(delete_stock_row),
+                                    }],
                                 }
                                 await api.stock_adjustment(_token(), tenant_id, payload)
                                 delete_stock_dialog.close()
                                 ui.notify("Stock ajustado a 0.", type="positive")
                                 await load_stock()
                             except Exception as ex:
-                                ui.notify(f"Error: {ex}", type="negative")
+                                ui.notify(_err_msg(ex), type="negative")
 
                         with ui.row().classes("justify-end gap-2"):
                             ui.button("Cancelar", on_click=delete_stock_dialog.close).props("flat")
@@ -1320,6 +1796,7 @@ async def page_stock(tenant_id: str) -> None:
                 def on_delete_stock(e: Any) -> None:
                     delete_stock_row.clear()
                     delete_stock_row.update(e.args)
+                    delete_stock_info.set_text(_row_label(e.args))
                     delete_stock_dialog.open()
 
                 # Group by category
@@ -1335,6 +1812,8 @@ async def page_stock(tenant_id: str) -> None:
                         "product_name": prod_map.get(prod_id, prod_id[:8]),
                         "warehouse_name": wh_map.get(str(s["warehouse_id"]).lower(), "—"),
                         "zone_name": all_zones.get(str(s["zone_id"]).lower(), "—"),
+                        "lot_str": s.get("lot_number") or "—",
+                        "bin_str": s.get("bin_code") or "Sin ubicar",
                         "physical_qty": float(s["physical_qty"]),
                         "reserved_qty": float(s["reserved_qty"]),
                         "available_qty": float(s["available_qty"]),
@@ -1343,17 +1822,22 @@ async def page_stock(tenant_id: str) -> None:
 
                 sorted_cats = sorted(grouped_items.keys(), key=lambda x: (x == "Sin Categoría", x))
 
-                for cat_name in sorted_cats:
+                for i, cat_name in enumerate(sorted_cats):
                     rows = grouped_items[cat_name]
-                    with ui.expansion(f"{cat_name} ({len(rows)})", icon="category").classes("w-full bg-white shadow-sm mb-2").props("default-opened"):
+                    with theme.category_expansion(cat_name, len(rows), i):
                         tbl = ui.table(columns=columns, rows=rows, row_key="id").classes("w-full shadow-none border-t")
+                        # Nombres de producto y zona largos: que partan línea en vez de
+                        # empujar las columnas de cantidades fuera de la vista.
+                        tbl.props("wrap-cells")
                         tbl.add_slot("body-cell-available", """
                             <q-td :props="props">
-                                <q-badge :color="props.value > 0 ? 'positive' : 'grey'" :label="props.value" />
+                                <span class="mn-pill" :class="props.value > 0 ? 'mn-pill--ok' : ''">
+                                    {{ props.value }}
+                                </span>
                             </q-td>
                         """)
                         tbl.add_slot("body-cell-actions", """
-                            <q-td :props="props">
+                            <q-td :props="props" class="text-no-wrap">
                                 <q-btn flat dense icon="edit" color="primary" size="sm"
                                        @click="$parent.$emit('edit_stock', props.row)" class="mr-1" />
                                 <q-btn flat dense icon="delete" color="negative" size="sm"
@@ -1385,11 +1869,8 @@ _CODE_RE = re.compile(r"^[A-Za-z0-9\-_]+$")
 @ui.page("/tenants/{tenant_id}/warehouses")
 async def page_warehouses(tenant_id: str) -> None:
     _guard()
-    ui.colors(primary="#1a56db")
-
-    with ui.row().classes("w-full items-center gap-3 mb-4"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}")).props("flat round")
-        ui.label("Almacenes").classes("text-2xl font-bold")
+    tenant = await theme.shell("warehouses", tenant_id=tenant_id)
+    theme.sub_header(tenant, tenant_id, "Almacenes")
 
     wh_container = ui.column().classes("w-full")
 
@@ -1506,7 +1987,7 @@ async def page_warehouses(tenant_id: str) -> None:
 
             with ui.row().classes("w-full justify-between items-center mb-2"):
                 ui.label(f"{len(warehouses)} almacén(es)").classes("text-sm text-gray-500")
-                ui.button("+ Nuevo Almacén", on_click=open_wh_dialog).props('unelevated color="primary"')
+                ui.button("Nuevo almacén", icon="add", on_click=open_wh_dialog).props('unelevated no-caps color="primary"')
 
             if not warehouses:
                 with ui.card().classes("w-full p-8 text-center"):
@@ -1540,9 +2021,10 @@ async def page_warehouses(tenant_id: str) -> None:
                             ui.label(wh["location_address"]).classes("text-sm text-gray-500")
                         with ui.row().classes("w-full justify-end"):
                             ui.button(
-                                "+ Nueva Zona",
+                                "Nueva zona",
+                                icon="add",
                                 on_click=lambda w=wh: open_zone_dialog(w),
-                            ).props('flat dense color="primary"')
+                            ).props('flat dense no-caps color="primary"')
                         if zones:
                             ui.table(columns=zone_columns, rows=zones, row_key="id").classes(
                                 "w-full shadow-none border-t"

@@ -54,6 +54,8 @@ graph TD
 
 ### RF-016: Registro de Entrada de Mercancía (Purchase Receipt)
 
+> ⚠️ **Ampliado por el módulo 10** ([RF_trazabilidad_lotes_ubicaciones.md](../10_trazabilidad_lotes_ubicaciones/RF_trazabilidad_lotes_ubicaciones.md), 2026-11-04): la entrada acepta `supplier_id` y `bin_id` por ítem y devuelve `document_number` (RF-053, RF-054, RF-058). Cambia RN-016-3: el saldo se identifica por producto + zona + bin + lote + proveedor, no solo por producto + almacén. Con `track_lots = true` el `lot_number` es obligatorio (RF-057).
+
 - **ID:** RF-016 | **Prioridad:** P0
 - **Descripción:** Procesar ingresos de stock incrementando el saldo físico y disponible del almacén de destino. Cada entrada recalcula el CPP del producto.
 - **Pre-condiciones:** Producto y almacén existen y están activos. El solicitante tiene scope `WRITE_INVENTORY`.
