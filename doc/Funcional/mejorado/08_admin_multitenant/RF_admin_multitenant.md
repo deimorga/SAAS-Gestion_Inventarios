@@ -187,6 +187,8 @@ graph TD
 
 ### RF-039: Gestión de Usuarios por Tenant Admin
 
+> ⚠️ **Corregido por el módulo 09** ([RF_gestion_usuarios.md](../09_gestion_usuarios/RF_gestion_usuarios.md), 2026-11-05): RF-048 sustituye a este RF. Cambian RN-039-1 (roles `inventory_manager`/`viewer`), RN-039-2 (email único **global**) y RN-039-3 (desactivar cierra sesiones al momento, RF-051). El usuario se crea **inactivo** hasta su activación.
+
 - **ID:** RF-039
 - **Módulo:** Admin Multi-tenant
 - **Prioridad:** P0 — Bloqueante
@@ -216,6 +218,8 @@ graph TD
 ---
 
 ### RF-040: Cambio Voluntario de Contraseña
+
+> ⚠️ **Ampliado por el módulo 09**: la contraseña mínima pasa a 12 caracteres (RN-052-4). RN-040-2 se mantiene: el cambio voluntario no cierra otras sesiones.
 
 - **ID:** RF-040
 - **Módulo:** Admin Multi-tenant
