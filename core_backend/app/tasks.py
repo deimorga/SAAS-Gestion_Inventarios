@@ -9,9 +9,11 @@ Tasks registradas:
 import asyncio
 import logging
 import smtplib
-from datetime import datetime, timedelta, timezone
+from collections.abc import Coroutine
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Any, TypeVar
 
 import resend
 from celery import Celery
@@ -19,10 +21,31 @@ from celery.schedules import crontab
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal, set_system_context
+from app.core.database import AsyncSessionLocal, engine, set_system_context
 from app.models.api_key import ApiKey
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _run_async(coro: Coroutine[Any, Any, T]) -> T:
+    """Ejecuta una corrutina desde una tarea Celery síncrona.
+
+    Cada `asyncio.run()` crea un event loop nuevo, pero el pool del engine es
+    global al proceso: sus conexiones quedan atadas al loop que las abrió. La
+    primera ejecución en un worker recién arrancado funciona y las siguientes
+    fallan con "attached to a different loop". Vaciar el pool antes de cerrar
+    el loop evita que la siguiente tarea herede conexiones muertas.
+    """
+    async def _con_pool_limpio() -> T:
+        try:
+            return await coro
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_con_pool_limpio())
 
 # ── Celery app ─────────────────────────────────────────────────────────────
 
@@ -269,7 +292,19 @@ def check_expiring_api_keys() -> dict:
 
     Hitos: T-30, T-7, T-1 (pre-vencimiento) y T-0 (vence hoy → desactiva).
     """
-    return asyncio.run(_async_check_expiring_api_keys())
+    return _run_async(_async_check_expiring_api_keys())
+
+
+async def _tenant_admins(db, tenant_id: str) -> list[User]:
+    """Destinatarios de los avisos de una key: los tenant_admin activos del tenant."""
+    result = await db.execute(
+        select(User).where(
+            User.tenant_id == tenant_id,
+            User.role == "tenant_admin",
+            User.is_active,
+        )
+    )
+    return list(result.scalars().all())
 
 
 async def _async_check_expiring_api_keys() -> dict:
@@ -282,29 +317,6 @@ async def _async_check_expiring_api_keys() -> dict:
     async with AsyncSessionLocal() as db:
         # Barre las keys de todos los tenants: requiere bypass explícito de RLS
         await set_system_context(db)
-        for days_ahead, template in milestones.items():
-            target_date = today + timedelta(days=days_ahead)
-            result = await db.execute(
-                select(ApiKey).where(
-                    ApiKey.is_active,
-                    ApiKey.expires_at.isnot(None),
-                )
-            )
-            keys = result.scalars().all()
-            for key in keys:
-                if key.expires_at and key.expires_at.date() == target_date:
-                    send_email.delay(
-                        to_email="",
-                        template=template,
-                        context={
-                            "full_name": "Administrador",
-                            "key_name": key.name,
-                            "expires_at": key.expires_at.strftime("%Y-%m-%d"),
-                        },
-                    )
-                    queued += 1
-
-        # T-0: desactivar keys vencidas hoy
         result = await db.execute(
             select(ApiKey).where(
                 ApiKey.is_active,
@@ -312,9 +324,39 @@ async def _async_check_expiring_api_keys() -> dict:
             )
         )
         for key in result.scalars().all():
-            if key.expires_at and key.expires_at.date() <= today:
+            if key.expires_at is None:
+                continue
+            days_left = (key.expires_at.date() - today).days
+            if days_left <= 0:
+                # T-0: vence hoy (o venció sin que nadie la desactivara)
                 key.is_active = False
                 expired += 1
+                template = "api_key_expired"
+            elif days_left in milestones:
+                template = milestones[days_left]
+            else:
+                continue
+
+            admins = await _tenant_admins(db, key.tenant_id)
+            if not admins:
+                logger.warning(
+                    "check_expiring_api_keys: el tenant %s no tiene tenant_admin activo; "
+                    "nadie recibe el aviso de la key %s",
+                    key.tenant_id,
+                    key.id,
+                )
+            for admin in admins:
+                send_email.delay(
+                    to_email=admin.email,
+                    template=template,
+                    context={
+                        "full_name": admin.full_name,
+                        "key_name": key.name,
+                        "expires_at": key.expires_at.strftime("%Y-%m-%d"),
+                    },
+                )
+                queued += 1
+
         if expired:
             await db.commit()
 
@@ -325,7 +367,7 @@ async def _async_check_expiring_api_keys() -> dict:
 @celery_app.task(name="app.tasks.revoke_grace_period_key")
 def revoke_grace_period_key(key_id: str) -> dict:
     """Revoca la API Key anterior al terminar el período de gracia."""
-    return asyncio.run(_async_revoke_grace_period_key(key_id))
+    return _run_async(_async_revoke_grace_period_key(key_id))
 
 
 async def _async_revoke_grace_period_key(key_id: str) -> dict:

@@ -46,6 +46,10 @@ services:
       WEBHOOK_MAX_ATTEMPTS: "3"
       WEBHOOK_TIMEOUT_SECONDS: "10"
       WEBHOOK_POLL_SECONDS: "10"
+      # X-Forwarded-For solo se cree de Traefik (IP fija en micronuba_public) y
+      # del portal: cualquier otro vecino de la red compartida podría falsearlo
+      # y saltarse el límite de intentos de login.
+      TRUSTED_PROXY_HOSTS: "172.22.0.254,inv-admin-portal"
     depends_on:
       postgres:
         condition: service_healthy

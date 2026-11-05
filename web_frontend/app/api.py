@@ -102,17 +102,19 @@ async def _authed_request(
 
 # ── Auth (no auto-refresh needed) ────────────────────────────────────────────
 
-async def admin_login(email: str, password: str) -> dict[str, Any]:
+async def admin_login(email: str, password: str, client_ip: str = "") -> dict[str, Any]:
     """Autenticación en cascada: intenta /admin/auth/login (super_admin).
 
     Si el backend responde con 403 (rol no permitido en superficie admin),
-    reintenta en /v1/auth/login (tenant_admin).
+    reintenta en /v1/auth/login (tenant_admin). `client_ip` es la IP del
+    navegador: el API limita los intentos fallidos por origen.
     """
+    headers = {"X-Forwarded-For": client_ip} if client_ip else {}
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=_TIMEOUT) as c:
-        r = await c.post("/admin/auth/login", json={"email": email, "password": password})
+        r = await c.post("/admin/auth/login", json={"email": email, "password": password}, headers=headers)
         if r.status_code == 403:
             # Cascada: tenant_admin usa la superficie de cliente
-            r = await c.post("/v1/auth/login", json={"email": email, "password": password})
+            r = await c.post("/v1/auth/login", json={"email": email, "password": password}, headers=headers)
         r.raise_for_status()
         return r.json()
 

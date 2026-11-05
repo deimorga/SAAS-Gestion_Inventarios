@@ -11,6 +11,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+import redis.asyncio as aioredis
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -93,6 +94,22 @@ async def _delete_tenant(session: AsyncSession, tenant_id: str) -> None:
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture(autouse=True)
+async def _limpiar_intentos_de_login():
+    """Borra los contadores de intentos fallidos de login antes de cada test.
+
+    Todos los tests comparten la IP del cliente ASGI: sin esto, los que prueban
+    contraseñas erróneas acumularían fallos y acabarían bloqueando los logins
+    de los tests siguientes (y de la siguiente ejecución, que comparte Redis).
+    """
+    r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    claves = [k async for k in r.scan_iter("login_fail:*")]
+    if claves:
+        await r.delete(*claves)
+    await r.aclose()
+    yield
+
 
 @pytest_asyncio.fixture(scope="session")
 async def client():
