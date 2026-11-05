@@ -370,8 +370,10 @@ pytest -v --tb=short        # Verbose with short tracebacks
 pytest -s                   # Show print statements
 ```
 
-**Contra staging** — `Dockerfile.prod` no instala pytest ni copia `tests/`, así que hay que
-montar el código y añadir las dependencias al vuelo:
+**Contra staging** — ⚠️ **Los tests escriben en la base de datos real de staging.** Hasta que se
+complete T-917 (Sprint 9), `tests/test_admin_auth.py` borra todos los super_admins: el 2026-10-26
+borró la cuenta raíz de staging. Solo lo ejecuta Deiby. `Dockerfile.prod` no instala pytest ni
+copia `tests/`, así que hay que montar el código y añadir las dependencias al vuelo:
 
 ```bash
 cd /root/inventory-saas-staging
@@ -640,8 +642,8 @@ Existen porque `/v1/auth/resend-activation` exige `tenant_admin` del mismo tenan
   reenviar (`dispatch_activation_email` en `app/services/activation.py`). Antes solo se
   generaba el token en Redis y `ACTIVATION_BASE_URL` no se usaba en ninguna línea de código.
 - Ruff incluye `T20`: un `print()` en `app/` es error de lint.
-- **Pendiente conocido**: `check_expiring_api_keys` encola con `to_email=""`. Daba igual
-  mientras la tarea no corriera; ahora corre a diario a las 08:00 UTC.
+- ~~**Pendiente conocido**: `check_expiring_api_keys` encola con `to_email=""`.~~ Resuelto en
+  `888f4da` (2026-10-26): avisa a los `tenant_admin` activos del tenant.
 
 ## Cambios Recientes (2026-08-27 — Almacenes desde el portal)
 
@@ -658,9 +660,33 @@ de crear uno sin llamar al API a mano.
 - Portal: `/tenants/{id}/warehouses` — listado con zonas, crear almacén y crear zona.
 - Los `GET` de almacenes/zonas del admin devuelven también `code`, `is_virtual` e `is_active`.
 
-**Pendiente detectado (no corregido)**: nada escribe la clave `tenant_tier:<id>` en Redis, y
-`deps.py` hace `await redis.get(tier_key) or "STARTER"`. Resultado: **todos** los tenants
-—ENTERPRISE incluidos— quedan limitados a 60 req/min.
+~~**Pendiente detectado**: todos los tenants quedaban limitados a 60 req/min.~~ Resuelto en
+`f144b57` (2026-10-26): el rate limit lee `tenants.subscription_tier` y lo cachea 5 min en
+`tenant_tier:<id>`.
+
+## Trabajo en curso: Módulo 09 — Gestión de Usuarios (Sprint 9)
+
+Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno**. Antes de tocar nada de
+usuarios, autenticación o contraseñas, leer:
+
+- `doc/Planeacion/Sprints/sprint_09.md` — tareas T-901 a T-917 y su orden (T-917 primero)
+- `doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md` — RF-046 a RF-052
+- `doc/Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md` — contratos, migración 014,
+  tests y **§13: guía para desarrollar con Claude**
+
+**Lineamientos que no se negocian:**
+
+- **L-1 — Cuenta raíz protegida.** El super_admin actual de cada ambiente es la cuenta desde la
+  que se crean todos los demás usuarios. Ningún código, migración, script ni test puede borrarla,
+  desactivarla, cambiarle el rol o el nombre, ni forzar su reseteo. Se marca con
+  `users.is_protected = true` (migración 014).
+- **L-3** — No se borran usuarios de forma física: se desactivan.
+- **L-4** — Los tests nunca borran ni modifican datos que no crearon. Nada de `DELETE`/`UPDATE`
+  filtrando por rol: solo por el `id` que creó el propio test.
+- **L-5** — Ningún administrador conoce ni fija la contraseña de otro: solo se envían emails.
+- **Desarrollo y tests, en local.** No correr tests ni scripts contra staging o producción, no
+  conectarse al VPS y no desplegar: eso lo hace Deiby.
+- Rama `feature/T-9xx-…` desde `staging` y un PR por tarea hacia `staging`.
 
 ## Glossary
 

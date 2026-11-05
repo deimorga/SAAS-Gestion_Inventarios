@@ -20,6 +20,13 @@
 > **No correr la suite contra staging hasta completar T-917** (ver sprint). Hoy
 > `tests/test_admin_auth.py` borra todos los super_admins de la base de datos que toque.
 
+> [!CAUTION]
+> **Lineamiento L-1 — cuenta raíz protegida.** El super_admin actual de cada ambiente
+> (staging y producción) es la cuenta desde la que se crean todos los demás usuarios. **Ningún
+> código, migración, script ni test puede borrarla, desactivarla, cambiarle el rol o el nombre, ni
+> forzar su reseteo.** Se identifica con `users.is_protected = true` (migración 014). Ver los
+> lineamientos L-1 a L-5 en la [definición funcional](../../Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md#lineamientos-del-requerimiento-obligatorios).
+
 ---
 
 ## 1. Estado de partida (código real a 2026-11-05)
@@ -101,6 +108,8 @@ ASSIGNABLE_ROLES = {
 }
 
 def ensure_can_manage(actor: Actor, target: User, *, deactivating: bool = False) -> None:
+    if target.is_protected:
+        raise HTTPException(403, "Cuenta raíz protegida")                            # L-1, RN-049-5
     if actor.role == "tenant_admin":
         if target.role == "tenant_admin" and target.id != actor.user_id:
             raise HTTPException(403, "No puedes gestionar a otro tenant_admin")      # RN-048-2
@@ -109,6 +118,14 @@ def ensure_can_manage(actor: Actor, target: User, *, deactivating: bool = False)
     if target.role == "super_admin":
         raise HTTPException(404, "Usuario no encontrado")  # RN-049-4: no se gestionan por aquí
 ```
+
+- `ensure_can_manage` se llama en **todas** las escrituras sobre usuarios de un tenant (PATCH,
+  password-reset, resend-activation), antes de tocar nada.
+- `super_admins.py` tiene su propia comprobación, con el **mismo primer paso**: si
+  `target.is_protected`, `403` "Cuenta raíz protegida". Después: no desactivarse a sí mismo y no
+  dejar 0 activos.
+- La comprobación de `is_protected` va **en el servicio**, no solo en el portal: ocultar el botón
+  no protege nada si el endpoint acepta la petición.
 
 ---
 
@@ -252,14 +269,15 @@ Coste: un `GET` de Redis por request, igual que el del tier. Las API Keys no pas
 
 ---
 
-## 6. Migración 014 — email único global
+## 6. Migración 014 — email único global y cuenta raíz protegida
 
-`alembic/versions/014_users_email_unique_global.py`:
+`alembic/versions/014_users_email_global_y_cuenta_raiz.py`:
 
 ```python
 def upgrade():
+    bind = op.get_bind()
     # 1. Abortar con un mensaje claro si hay duplicados (en prod no los hay a 2026-11-05)
-    dup = op.get_bind().execute(sa.text(
+    dup = bind.execute(sa.text(
         "SELECT lower(email) FROM users GROUP BY 1 HAVING count(*) > 1"
     )).fetchall()
     if dup:
@@ -269,9 +287,25 @@ def upgrade():
     # 3. Índice
     op.create_index("uq_users_email_lower", "users", [sa.text("lower(email)")], unique=True)
 
+    # 4. Cuenta raíz protegida (L-1)
+    op.add_column("users", sa.Column("is_protected", sa.Boolean(), nullable=False,
+                                     server_default=sa.false()))
+    op.execute("UPDATE users SET is_protected = true WHERE role = 'super_admin' AND is_active")
+    protegidas = bind.execute(sa.text("SELECT count(*) FROM users WHERE is_protected")).scalar()
+    if protegidas == 0:
+        raise RuntimeError("No hay ningún super_admin activo que proteger: revisar antes de migrar")
+
 def downgrade():
+    op.drop_column("users", "is_protected")
     op.drop_index("uq_users_email_lower", table_name="users")
 ```
+
+- A 2026-11-05 hay **exactamente un** super_admin activo en cada ambiente, que es la cuenta raíz. La
+  migración solo lo marca: **no** modifica su email, contraseña, nombre ni estado.
+- Añadir `is_protected: Mapped[bool]` al modelo `app/models/user.py` y exponerlo en `UserResponse`,
+  para que el portal muestre la etiqueta "Raíz".
+- El bootstrap (`register_super_admin`, solo funciona si no hay ningún super_admin) crea la cuenta
+  con `is_protected=True`: el primer super_admin de un ambiente nuevo es su cuenta raíz.
 
 - Corre con `MIGRATION_DATABASE_URL`, como todas. Ese rol es el superusuario de PostgreSQL, y los
   superusuarios ignoran RLS aunque `users` lo tenga en FORCE: la consulta de duplicados ve todos los
@@ -362,18 +396,23 @@ Todos en `core_backend/tests/`. Cada test crea y borra **solo** sus datos.
 |---|---|
 | `test_user_management.py` (ampliar) | Defecto `viewer`; `403` crear `tenant_admin` desde v1; `403` autodesactivarse; `403` tocar a otro tenant_admin; `409` email de otro tenant; `409` activar a mano un pendiente; PATCH de rol con auditoría `old/new` |
 | `test_admin_users.py` (nuevo) | CRUD admin; `404` usuario de otro tenant; super_admin no aparece en la lista de un tenant |
-| `test_super_admins.py` (nuevo) | Crear → pendiente en tenant interno; `403` autodesactivarse; `409` dejar 0 activos |
+| `test_super_admins.py` (nuevo) | Crear → pendiente en tenant interno y `is_protected=false`; `403` autodesactivarse; `409` dejar 0 activos; **`403` desactivar, editar o forzar reseteo de una cuenta protegida, y la cuenta queda intacta**; el dueño de una cuenta protegida sí puede usar `forgot-password` |
+| `test_user_management.py` / `test_admin_users.py` | Un `tenant_admin` con `is_protected=true` (creado por el test) tampoco se puede tocar: la protección vale para cualquier rol |
 | `test_password_reset.py` (nuevo) | `202` idéntico para email existente e inexistente; pendiente → reenvía activación; token de un solo uso; el segundo token invalida el primero; `429` al 4º en una hora; reseteo borra contadores de login; contraseña < 12 → `422` |
 | `test_session_revocation.py` (nuevo) | Desactivar → el access token vigente da `401` en el siguiente request; refresh revocado; cambio voluntario (RF-040) **no** revoca; API Key sigue funcionando |
 | `test_migration_014` o en `test_user_management.py` | Login con email en mayúsculas funciona |
-| `test_admin_auth.py` (T-917) | El fixture solo borra super_admins `sa-test-*`; los tests que exigen tabla vacía hacen `skip` si hay super_admins que no crearon |
+| `test_admin_auth.py` (T-917) | El fixture solo borra super_admins con email `sa-test-*` creados por el propio test, **nunca** filas con `is_protected=true`; los tests que exigen tabla vacía (bootstrap) hacen `skip` si existe algún super_admin que no crearon |
 
-Validación: `ruff check app/ tests/`, `mypy app/` y la suite completa. Contra staging, con la receta
-de `CLAUDE.md` y **solo después de T-917**.
+Las cuentas que los tests marcan como protegidas usan emails `sa-test-*` / `test-*` y se borran en el
+teardown con `DELETE … WHERE id = :id` (el id que crearon), nunca por rol ni por `is_protected`.
+
+Validación del desarrollador: `ruff check app/ tests/`, `mypy app/` y la suite completa **en local**.
+La ejecución contra staging la hace Deiby al revisar el PR, con la receta de `CLAUDE.md` y solo
+después de T-917.
 
 ---
 
-## 12. Despliegue
+## 12. Despliegue (lo hace Deiby Moreno)
 
 1. Staging primero (rama `develop`). Comprobar con Mailpit: activación, olvido de contraseña y reseteo forzado.
 2. **Migración 014:** en prod, antes de desplegar, confirmar 0 duplicados con la consulta de la §6.
@@ -384,3 +423,54 @@ de `CLAUDE.md` y **solo después de T-917**.
    AutolavadoDemo desde la página nueva, y confirmar que el enlace funciona.
 5. **Resend en producción no está verificado de punta a punta.** Hacer una prueba real (p. ej.
    "olvidé mi contraseña" con una cuenta propia) antes de dar el módulo por cerrado.
+
+---
+
+## 13. Guía para desarrollar con Claude
+
+Cristian desarrolla este módulo con Claude Code. Claude carga `CLAUDE.md` automáticamente, y ahí
+están los lineamientos de este módulo (sección *Trabajo en curso: Módulo 09*). Esta guía completa lo
+que no cabe allí.
+
+### 13.1 Cómo trabajar
+
+- **Una tarea del sprint por sesión o por PR** (T-901, T-902…), en el orden de
+  [sprint_09.md](../../Planeacion/Sprints/sprint_09.md). Empezar siempre por T-917.
+- **Rama de trabajo:** `feature/T-9xx-descripcion` creada desde `staging`, con Pull Request hacia
+  `staging`. Deiby revisa, hace el merge y despliega. Nadie más empuja a `main`.
+- **Tests primero:** para cada regla de negocio, escribir el test que la prueba, verlo fallar y
+  luego implementar. Los criterios de aceptación de las HU-USR del RF son la lista mínima.
+- **Antes de abrir el PR:** `ruff check app/ tests/`, `mypy app/` y la suite completa en local, con
+  la base de datos del `docker-compose.dev.yml`.
+
+### 13.2 Lo que Claude NO debe hacer
+
+| Prohibido | Por qué |
+|---|---|
+| Tocar la cuenta raíz (`is_protected=true`) en código, migraciones, scripts o tests | L-1 |
+| Correr tests o scripts contra staging o producción | Escriben en sus bases de datos reales; el 2026-10-26 un test borró el super_admin de staging. Se prueba en local; staging lo valida Deiby |
+| Conectarse al VPS, desplegar o reiniciar contenedores | Despliega solo Deiby, con aviso a infra (hay tenants reales en producción) |
+| `DELETE` de usuarios reales, o `DELETE`/`UPDATE` filtrando por rol | L-3 y L-4 |
+| `set_config('app.current_tenant', …)` a mano | Usar `set_tenant_context` / `set_system_context` (`CLAUDE.md`) |
+| Devolver datos de un tenant desde endpoints con `get_db()` | `get_db()` salta RLS; solo sirve para localizar el usuario |
+| Guardar o registrar contraseñas, hashes o tokens en logs o `audit_logs` | DoD del sprint |
+| Cambiar los permisos de los roles | Fuera de alcance: no se rediseñan los roles |
+
+### 13.3 Prompt de arranque sugerido
+
+Para cada tarea, abrir Claude Code en la raíz del repo y empezar con algo como:
+
+```text
+Vamos a desarrollar la tarea T-9xx del Sprint 9.
+Lee doc/Planeacion/Sprints/sprint_09.md, la definición funcional
+doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md y la técnica
+doc/Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md.
+Respeta los lineamientos L-1 a L-5 y la sección 13.2 de la DT.
+Primero dime qué ficheros vas a tocar y qué tests vas a escribir; no escribas
+código hasta que lo confirme. Trabaja en la rama feature/T-9xx-… desde staging.
+```
+
+### 13.4 Si algo no está definido
+
+Si una decisión no está en el RF ni en la DT, **no la inventes**: anótala en el PR como pregunta para
+Deiby. Si es bloqueante, se decide y se añade aquí antes de seguir.

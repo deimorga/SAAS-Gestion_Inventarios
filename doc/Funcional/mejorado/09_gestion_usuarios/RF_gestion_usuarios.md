@@ -34,6 +34,19 @@ gestionar usuarios**:
 **Alcance de este módulo:** corregir lo anterior y dar al portal la gestión completa de usuarios
 de un tenant, de super_admins y la recuperación de contraseña por email.
 
+### Lineamientos del requerimiento (obligatorios)
+
+Definidos por Deiby Moreno, responsable del producto, el 2026-11-05. Prevalecen sobre cualquier
+otra regla de este módulo.
+
+| ID | Lineamiento |
+|---|---|
+| **L-1** | **El super_admin actual de cada ambiente es la cuenta raíz y está protegida.** Es la cuenta desde la que se crean todos los demás usuarios, incluidos otros super_admins. Nada en el sistema puede borrarla, desactivarla, cambiarle el rol ni forzar su reseteo: ni otro super_admin, ni un endpoint, ni una migración, ni un test. Solo su propio dueño puede cambiar su contraseña (cambio voluntario u "olvidé mi contraseña"). Ver RN-049-5 y `users.is_protected`. |
+| **L-2** | **La gestión de usuarios nace de esa cuenta raíz.** El super_admin raíz crea super_admins y `tenant_admin`; cada `tenant_admin` crea a su equipo. No hay registro abierto ni autoservicio. |
+| **L-3** | **No se borra ningún usuario de forma física.** Se desactiva. Aplica a datos reales en cualquier ambiente. |
+| **L-4** | **Los tests nunca borran ni modifican datos que no crearon.** El incidente del 2026-10-26 (RN-052-6) borró el super_admin real de staging. |
+| **L-5** | **Ningún administrador conoce ni fija la contraseña de otro usuario.** Solo dispara emails de activación o reseteo. |
+
 **Fuera de alcance:** rediseñar el modelo de roles (se mantienen `super_admin`, `tenant_admin`,
 `inventory_manager`, `viewer` con los permisos de hoy), borrado físico de usuarios, autenticación
 de doble factor y cambio de email de un usuario existente.
@@ -207,8 +220,17 @@ graph TD
     se registra en el tenant interno.
   - RN-049-4: Los super_admins no aparecen en la gestión de usuarios de tenants (RF-047), ni siquiera
     en la del tenant interno.
+  - RN-049-5: **Cuenta raíz protegida (L-1).** El super_admin existente en cada ambiente al aplicar
+    la migración 014 queda marcado como protegido (`is_protected=true`). Sobre una cuenta protegida
+    nadie puede: desactivarla, cambiarle el nombre o el rol, ni forzar su reseteo. En la tabla de
+    `/super-admins` aparece con la etiqueta "Raíz" y sin acciones. Su dueño sí puede cambiar su propia
+    contraseña (RF-040) y usar "olvidé mi contraseña" (RF-050).
+  - RN-049-6: Los super_admins creados desde el portal **no** son protegidos. Proteger otra cuenta no
+    se hace desde la aplicación: es una decisión del responsable del producto y se aplica en base de
+    datos.
 - **Manejo de Errores:**
   - Desactivarse a sí mismo → `403`.
+  - Cualquier modificación o reseteo forzado sobre una cuenta protegida → `403` "Cuenta raíz protegida".
   - Dejar el sistema sin super_admin activo → `409`.
   - Email duplicado → `409`.
 
@@ -283,7 +305,7 @@ graph TD
   - RN-052-5: Toda acción sobre usuarios queda en `audit_logs`: alta, edición (con valores anterior y
     nuevo), desactivación, reactivación, reenvío de activación, reseteo forzado, reseteo completado y
     activación. Quién la hizo y desde qué IP.
-  - RN-052-6: Los tests no pueden borrar datos que no crearon. Hoy `test_admin_auth.py` borra **todos**
+  - RN-052-6: Los tests no pueden borrar datos que no crearon (L-4). Hoy `test_admin_auth.py` borra **todos**
     los super_admins antes de cada test; el 2026-10-26 eso eliminó el super_admin real de staging al
     correr la suite allí.
 
@@ -332,6 +354,8 @@ graph TD
 - **Criterios de Aceptación:**
   1. **Dado** que creo un super_admin, **Entonces** recibe la activación y, al activarse, entra al portal con acceso completo.
   2. **Dado** que soy el único super_admin activo, **Cuando** intento desactivarme o desactivar al último, **Entonces** el sistema lo impide.
+  3. **Dado** que soy un super_admin creado desde el portal, **Cuando** intento desactivar, editar o forzar el reseteo de la cuenta raíz, **Entonces** recibo `403` y la cuenta raíz no cambia.
+  4. **Dado** que soy el dueño de la cuenta raíz, **Cuando** uso "olvidé mi contraseña", **Entonces** puedo recuperar mi acceso.
 
 ### HU-USR-006: Saber quién cambió qué
 
@@ -349,8 +373,9 @@ graph TD
 |---|---|---|
 | `users` | Índice único sobre `lower(email)` (migración 014) | RN-052-1. El índice actual `(tenant_id, email)` se mantiene |
 | `users` | Normalizar `email` a minúsculas (migración 014) | RN-052-2 |
+| `users` | Columna `is_protected boolean NOT NULL DEFAULT false`; la migración 014 la pone a `true` en el super_admin activo existente | L-1, RN-049-5 |
 
-No se añaden columnas: el estado se deriva de `is_active` y `must_change_password`.
+El estado (pendiente / activo / desactivado) no es una columna: se deriva de `is_active` y `must_change_password`.
 
 ### Redis — claves nuevas
 
