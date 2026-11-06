@@ -81,7 +81,8 @@ async def get_audit_logs(
             old_values=log.old_values,
             new_values=log.new_values,
             performed_by=PerformerInfo(**log.performed_by),
-            ip_address=log.ip_address,
+            # La columna es INET: asyncpg la devuelve como IPv4Address/IPv6Address, no como str
+            ip_address=str(log.ip_address) if log.ip_address is not None else None,
             user_agent=log.user_agent,
             created_at=log.created_at,
         )

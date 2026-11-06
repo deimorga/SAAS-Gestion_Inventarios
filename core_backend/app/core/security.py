@@ -9,6 +9,10 @@ from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# Política única de contraseña (RN-052-4): activación, cambio, reseteo y registro de super_admin.
+# Las contraseñas anteriores, de 8 caracteres, siguen valiendo hasta que se cambien.
+PASSWORD_MIN_LENGTH = 12
+
 REFRESH_TOKEN_PREFIX = "refresh:"
 ACCESS_BLACKLIST_PREFIX = "blacklist:"
 
@@ -41,6 +45,9 @@ def create_access_token(user_id: str, tenant_id: str, role: str) -> tuple[str, i
         "tenant_id": tenant_id,
         "role": role,
         "iat": int(now.timestamp()),
+        # Milisegundos: la revocación de sesiones (RF-051) compara contra este valor. Con `iat`
+        # en segundos, un login en el mismo segundo que la revocación se rechazaría.
+        "iat_ms": int(now.timestamp() * 1000),
         "exp": int(expire.timestamp()),
         "type": "access",
     }

@@ -1,7 +1,7 @@
 # Definición Técnica — Módulo 09: Gestión de Usuarios y Recuperación de Acceso
 
 **Versión:** 1.0
-**Estado:** 📝 Definido — pendiente de desarrollo
+**Estado:** ✅ Implementado en local — pendiente de revisión y despliegue (T-916)
 **Fecha:** 2026-11-05
 **RF Cubiertos:** RF-046 a RF-052 — [RF_gestion_usuarios.md](../../Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md)
 **Responsable de desarrollo:** Cristian Anacona
@@ -24,7 +24,7 @@
 > **Lineamiento L-1 — cuenta raíz protegida.** El super_admin actual de cada ambiente
 > (staging y producción) es la cuenta desde la que se crean todos los demás usuarios. **Ningún
 > código, migración, script ni test puede borrarla, desactivarla, cambiarle el rol o el nombre, ni
-> forzar su reseteo.** Se identifica con `users.is_protected = true` (migración 014). Ver los
+> forzar su reseteo.** Se identifica con `users.is_protected = true` (migración 016). Ver los
 > lineamientos L-1 a L-5 en la [definición funcional](../../Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md#lineamientos-del-requerimiento-obligatorios).
 
 ---
@@ -164,7 +164,7 @@ Formato de error: el del handler global (`detail`, `error_code`, `timestamp`, `r
 > **Unicidad global con RLS:** la sesión del endpoint tiene RLS del tenant y no ve usuarios de otros.
 > La comprobación de email debe hacerse con una sesión de sistema (`set_system_context`) que **solo**
 > responde sí/no (`SELECT 1 … WHERE lower(email)=:e`), sin devolver datos. La garantía final es el
-> índice único de la migración 014: capturar `IntegrityError` y devolver `409`.
+> índice único de la migración 016: capturar `IntegrityError` y devolver `409`.
 
 ### 4.2 PATCH `/admin/tenants/{tenant_id}/users/{user_id}` y PATCH `/v1/users/{user_id}`
 
@@ -269,9 +269,16 @@ Coste: un `GET` de Redis por request, igual que el del tier. Las API Keys no pas
 
 ---
 
-## 6. Migración 014 — email único global y cuenta raíz protegida
+## 6. Migración 016 — email único global y cuenta raíz protegida
 
-`alembic/versions/014_users_email_global_y_cuenta_raiz.py`:
+> [!NOTE]
+> **Implementada como `016_users_email_global_cuenta_raiz.py`** (`down_revision = "015"`): en esta rama la 014 es
+> `tenant_external_ref` y la 015, `lot_location_traceability`. Una diferencia con el borrador de abajo: **no aborta si la
+> base no tiene ningún super_admin** (una base nueva, como la de CI), porque el bootstrap creará el primero ya protegido.
+> Solo aborta si existen super_admins y ninguno está activo. También levanta `FORCE ROW LEVEL SECURITY` de `users`
+> mientras corre, como la 015, para que funcione con un rol dueño que no sea superusuario.
+
+`alembic/versions/016_users_email_global_cuenta_raiz.py`:
 
 ```python
 def upgrade():
@@ -400,7 +407,7 @@ Todos en `core_backend/tests/`. Cada test crea y borra **solo** sus datos.
 | `test_user_management.py` / `test_admin_users.py` | Un `tenant_admin` con `is_protected=true` (creado por el test) tampoco se puede tocar: la protección vale para cualquier rol |
 | `test_password_reset.py` (nuevo) | `202` idéntico para email existente e inexistente; pendiente → reenvía activación; token de un solo uso; el segundo token invalida el primero; `429` al 4º en una hora; reseteo borra contadores de login; contraseña < 12 → `422` |
 | `test_session_revocation.py` (nuevo) | Desactivar → el access token vigente da `401` en el siguiente request; refresh revocado; cambio voluntario (RF-040) **no** revoca; API Key sigue funcionando |
-| `test_migration_014` o en `test_user_management.py` | Login con email en mayúsculas funciona |
+| `test_migration_016` o en `test_user_management.py` | Login con email en mayúsculas funciona |
 | `test_admin_auth.py` (T-917) | El fixture solo borra super_admins con email `sa-test-*` creados por el propio test, **nunca** filas con `is_protected=true`; los tests que exigen tabla vacía (bootstrap) hacen `skip` si existe algún super_admin que no crearon |
 
 Las cuentas que los tests marcan como protegidas usan emails `sa-test-*` / `test-*` y se borran en el
@@ -415,7 +422,7 @@ después de T-917.
 ## 12. Despliegue (lo hace Deiby Moreno)
 
 1. Staging primero (rama `develop`). Comprobar con Mailpit: activación, olvido de contraseña y reseteo forzado.
-2. **Migración 014:** en prod, antes de desplegar, confirmar 0 duplicados con la consulta de la §6.
+2. **Migración 016:** en prod, antes de desplegar, confirmar 0 duplicados con la consulta de la §6.
 3. Prod: `alembic upgrade head` y recrear `api`, `admin-portal` y `worker` (plantilla de email nueva).
    Corte esperado ~15 s del API (ver `doc/gateway/ambientes-produccion-staging.md`). Fuera del
    horario de oficina de Colombia, y avisar a infra del commit y la hora.

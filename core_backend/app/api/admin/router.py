@@ -4,6 +4,7 @@ from app.api.admin.endpoints import (
     admin_auth,
     admin_products,
     admin_stock,
+    admin_super_admins,
     admin_tenants,
     admin_users,
 )
@@ -14,3 +15,4 @@ router.include_router(admin_tenants.router)
 router.include_router(admin_products.router)
 router.include_router(admin_stock.router)
 router.include_router(admin_users.router)
+router.include_router(admin_super_admins.router)

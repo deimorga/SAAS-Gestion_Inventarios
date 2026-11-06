@@ -1,9 +1,13 @@
 from pydantic import BaseModel, Field
 
+from app.core.security import PASSWORD_MIN_LENGTH
+
 
 class ActivateRequest(BaseModel):
     token: str = Field(..., description="Token de activación recibido por email")
-    password: str = Field(..., min_length=8, description="Contraseña inicial (mínimo 8 caracteres)")
+    password: str = Field(
+        ..., min_length=PASSWORD_MIN_LENGTH, description=f"Contraseña inicial (mínimo {PASSWORD_MIN_LENGTH} caracteres)"
+    )
 
 
 class ResendActivationRequest(BaseModel):
@@ -12,11 +16,16 @@ class ResendActivationRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
-    new_password: str = Field(..., min_length=8, description="Nueva contraseña (mínimo 8 caracteres)")
+    new_password: str = Field(
+        ..., min_length=PASSWORD_MIN_LENGTH, description=f"Nueva contraseña (mínimo {PASSWORD_MIN_LENGTH} caracteres)"
+    )
 
 
 class ActivationResponse(BaseModel):
     message: str = "Cuenta activada exitosamente"
+    # Solo al activar con éxito: el portal lleva al login con el email prellenado (RF-046).
+    # Lo recibe únicamente quien tiene el token válido, es decir, el destinatario del email.
+    email: str | None = None
 
 
 class ChangePasswordResponse(BaseModel):

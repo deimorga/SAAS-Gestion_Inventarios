@@ -51,6 +51,11 @@ La API retorna errores en dos formas distintas según el origen:
 | `NOT_AUTHENTICATED` | 401 | `No autenticado` | JWT ausente, malformado o expirado en el header `Authorization` | Incluir un Bearer token válido o renovarlo con el refresh token |
 | `API_KEY_EXPIRED` | 401 | `API Key expirada` | La API Key usada superó su fecha de expiración | Rotar la API Key o generar una nueva |
 | `INSUFFICIENT_PERMISSIONS` | 403 | `Permisos insuficientes` | El scope de la API Key no cubre la operación solicitada | Crear una API Key con los scopes necesarios |
+| `SESSION_REVOKED` | 401 | `Sesión cerrada. Vuelve a iniciar sesión.` | El usuario fue desactivado o restableció su contraseña después de emitirse ese access token | Iniciar sesión de nuevo |
+| `TOO_MANY_LOGIN_ATTEMPTS` | 429 | `Demasiados intentos fallidos. Vuelve a intentarlo en N min.` | 5 contraseñas erróneas de la misma cuenta desde un origen, o 20 desde una IP | Esperar, o restablecer la contraseña desde «olvidé mi contraseña» |
+| `INVALID_RESET_LINK` | 400 | `El enlace no es válido o caducó.` | Token de reseteo inexistente, usado, caducado o reemplazado por uno más nuevo | Solicitar un enlace nuevo en `/forgot-password` |
+| `INVALID_ACTIVATION_TOKEN` | 410 | `Token de activación inválido o expirado` | Token de activación inexistente, usado, caducado, o el usuario ya no está pendiente | Pedir al administrador que reenvíe la activación |
+| `TOO_MANY_RESET_REQUESTS` | 429 | `Demasiadas solicitudes. Inténtalo de nuevo más tarde.` | Más de 3 solicitudes de `forgot-password` por email y hora, o 10 por IP | Esperar el tiempo de `Retry-After` |
 
 ---
 
@@ -136,8 +141,12 @@ La API retorna errores en dos formas distintas según el origen:
 | error_code | HTTP | detail (mensaje) | Cuándo ocurre | Acción sugerida |
 |---|---|---|---|---|
 | `ADMIN_BOOTSTRAP_DISABLED` | 503 | `Bootstrap de admin deshabilitado` | Se intentó usar el endpoint de bootstrap sin la variable de entorno habilitada | Verificar la configuración del entorno o contactar al operador |
-| `SUPER_ADMIN_ALREADY_EXISTS` | 409 | `Ya existe un super_admin registrado` | Se intentó crear un segundo super_admin cuando ya existe uno | Solo existe un super_admin; gestionar acceso desde el portal admin |
-| `EMAIL_ALREADY_REGISTERED` | 409 | `Email ya registrado` | Se intentó crear un usuario o admin con un email que ya existe en el sistema | Usar un email diferente o recuperar acceso con el existente |
+| `SUPER_ADMIN_ALREADY_EXISTS` | 409 | `Ya existe un super_admin registrado` | Se intentó usar el bootstrap cuando ya existe algún super_admin | El bootstrap solo crea el primero; los demás se crean en `/admin/super-admins` |
+| `EMAIL_ALREADY_REGISTERED` | 409 | `Email ya registrado` / `El email ya está registrado` | Se intentó crear un usuario o admin con un email que ya existe **en cualquier tenant** (sin distinguir mayúsculas) | Usar un email diferente o recuperar acceso con el existente |
+| `PROTECTED_ACCOUNT` | 403 | `Cuenta raíz protegida` | Se intentó desactivar, editar o resetear la cuenta raíz del ambiente | La cuenta raíz solo cambia su contraseña su propio dueño |
+| `LAST_SUPER_ADMIN` | 409 | `Siempre debe quedar al menos un super_admin activo` | Se intentó desactivar al último super_admin activo | Crear o reactivar otro super_admin primero |
+| `SELF_ACTION_FORBIDDEN` | 403 | `No puedes desactivarte a ti mismo` / `No puedes cambiar tu propio rol` / `No puedes gestionar a otro tenant_admin` | Reglas del `tenant_admin` sobre su equipo | Pedir a un super_admin que lo haga |
+| `USER_PENDING_ACTIVATION` | 409 | `El usuario está pendiente de activación…` | Activar a mano o resetear a un usuario que aún no activó su cuenta | Reenviar la activación; el usuario se activa con su enlace |
 | `TENANT_NOT_FOUND` | 404 | `Tenant no encontrado` | El ID de tenant referenciado no existe | Verificar el UUID del tenant |
 
 ---

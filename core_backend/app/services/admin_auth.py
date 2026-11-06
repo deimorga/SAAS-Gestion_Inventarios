@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import MICRONUBA_TENANT_ID, settings
@@ -16,6 +16,7 @@ from app.core.security import (
 from app.models.user import User
 from app.schemas.admin_auth import AdminLoginResponse, AdminRegisterRequest
 from app.schemas.auth import UserRole, UserSummary
+from app.services.sessions import register_session
 
 
 
@@ -33,25 +34,29 @@ async def register_super_admin(
     if bootstrap_secret != settings.ADMIN_BOOTSTRAP_SECRET:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
 
-    result = await db.execute(select(User).where(User.role == "super_admin"))
-    if result.scalar_one_or_none() is not None:
+    # `.first()` y no `scalar_one_or_none()`: con más de un super_admin (RF-049) esto daba 500.
+    result = await db.execute(select(User.id).where(User.role == "super_admin").limit(1))
+    if result.first() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe un super_admin registrado",
         )
 
-    result = await db.execute(select(User).where(User.email == request.email))
-    if result.scalar_one_or_none() is not None:
+    email = request.email.strip().lower()
+    result = await db.execute(select(User.id).where(func.lower(User.email) == email).limit(1))
+    if result.first() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email ya registrado")
 
     user = User(
         tenant_id=MICRONUBA_TENANT_ID,
-        email=request.email,
+        email=email,
         password_hash=hash_password(request.password),
         full_name=request.full_name,
         role="super_admin",
         is_active=True,
         must_change_password=False,
+        # El primer super_admin de un ambiente es su cuenta raíz (L-1)
+        is_protected=True,
         created_at=datetime.now(timezone.utc),
     )
     db.add(user)
@@ -67,7 +72,7 @@ async def login_admin_surface(
     db: AsyncSession,
     redis: aioredis.Redis,
 ) -> AdminLoginResponse:
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email.strip().lower()))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(password, user.password_hash):
@@ -101,6 +106,7 @@ async def _issue_admin_tokens(user: User, redis: aioredis.Redis) -> AdminLoginRe
     refresh_token = generate_refresh_token()
     ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
     await redis.setex(refresh_key(refresh_token), ttl, user.id)
+    await register_session(user.id, refresh_token, redis)
 
     return AdminLoginResponse(
         access_token=access_token,

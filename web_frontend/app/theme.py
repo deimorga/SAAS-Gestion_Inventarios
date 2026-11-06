@@ -148,7 +148,10 @@ body, .q-layout, .q-page-container, .q-page {
 .mn-pill--ok { background: var(--mn-ok-bg); color: var(--mn-ok-ink); }
 .mn-pill--pro { background: var(--mn-primary-soft); color: var(--mn-primary-ink); }
 .mn-pill--enterprise { background: #FBEBD0; color: #7A4300; }
+.mn-pill--warn { background: #FBEBD0; color: #7A4300; }
+.mn-pill--root { background: var(--mn-primary-soft); color: var(--mn-primary-ink); }
 .mn-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--mn-off-dot); }
+.mn-pill--warn .mn-dot { background: #B45309; }
 .mn-pill--ok .mn-dot { background: var(--mn-ok-dot); }
 .mn-chip {
   display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px;
@@ -410,7 +413,8 @@ async def shell(
 ) -> dict | None:
     """Aplica el tema y dibuja la barra lateral.
 
-    `active` marca el ítem resaltado: "tenants", "resumen", "products", "stock" o "warehouses".
+    `active` marca el ítem resaltado: "tenants", "super_admins", "resumen", "products", "stock",
+    "warehouses" o "users".
     Con `tenant_id` la barra pasa a ser la del tenant (Resumen / Productos / Stock / Almacenes).
     Si no se pasa `tenant` se pide al API para mostrar su nombre; devuelve el tenant (o None).
     """
@@ -456,9 +460,13 @@ async def shell(
                     if SHOW_STOCK_PAGE:
                         _nav_item("Stock", "bar_chart", f"/tenants/{tenant_id}/stock", active=active == "stock")
                     _nav_item("Almacenes", "warehouse", f"/tenants/{tenant_id}/warehouses", active=active == "warehouses")
+                    _nav_item("Usuarios", "group", f"/tenants/{tenant_id}/users", active=active == "users")
             elif is_super:
                 with ui.column().classes("w-full gap-1").props('role="navigation" aria-label="Principal"'):
                     _nav_item("Tenants", "apartment", "/tenants", active=active == "tenants")
+                    _nav_item(
+                        "Super admins", "admin_panel_settings", "/super-admins", active=active == "super_admins"
+                    )
 
             ui.space()
 

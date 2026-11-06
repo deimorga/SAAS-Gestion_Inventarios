@@ -4,7 +4,7 @@
 **Fecha Fin Estimada:** por definir
 **Responsable:** Cristian Anacona
 **Revisión y despliegue:** Deiby Moreno
-**Estado:** 📝 Planificado
+**Estado:** 🟡 Desarrollo terminado y probado en local — pendiente de revisión y despliegue (T-916)
 
 **Definición funcional:** [RF_gestion_usuarios.md](../../Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md) (RF-046 a RF-052)
 **Definición técnica:** [DT_gestion_usuarios.md](../../Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md)
@@ -54,23 +54,23 @@ Todos asignados a **Cristian Anacona**. Tamaño: S ≈ medio día · M ≈ 1–2
 
 | ID | Área | Tarea | RF | Tamaño | Depende de | Estado |
 |----|------|-------|----|--------|-----------|--------|
-| T-901 | Portal | Página pública `/activate?token=` (activación de cuenta) | RF-046 | S | — | ⬜ Pendiente |
-| T-902 | Backend | Política de contraseña única de 12 caracteres (`PASSWORD_MIN_LENGTH`) en activación, cambio, reseteo y registro | RF-052 | S | — | ⬜ Pendiente |
-| T-903 | Backend | Migración 014: email en minúsculas + índice único `lower(email)`; login sin distinguir mayúsculas; columna `is_protected` que marca la cuenta raíz (L-1) | RF-052, RF-049 | M | — | ⬜ Pendiente |
-| T-904 | Backend | Sesiones por usuario (`app/services/sessions.py`): índice de refresh tokens y `revoke_all_sessions` | RF-051 | M | — | ⬜ Pendiente |
-| T-905 | Backend | `get_current_auth` rechaza access tokens anteriores a la revocación (`user_revoked_at`) | RF-051 | S | T-904 | ⬜ Pendiente |
-| T-906 | Backend | `user_management`: `Actor`, `ensure_can_manage`, roles asignables, defecto `viewer`, email único global, filtros `status`/`q`, auditoría | RF-047, RF-048, RF-052 | L | T-903, T-904 | ⬜ Pendiente |
-| T-907 | Backend | `/v1/users`: PATCH con `role` y restricciones; `POST /v1/users/{id}/password-reset` | RF-048 | M | T-906, T-910 | ⬜ Pendiente |
-| T-908 | Backend | `/admin/tenants/{id}/users`: POST, PATCH y `password-reset` | RF-047 | M | T-906, T-910 | ⬜ Pendiente |
-| T-909 | Backend | `/admin/super-admins` (GET, POST, PATCH, password-reset) con "al menos uno activo" atómico y `403` sobre la cuenta raíz | RF-049 | M | T-903, T-906, T-910 | ⬜ Pendiente |
-| T-910 | Backend | `password_reset.py`: `forgot-password` (respuesta única, límites 3/h email y 10/h IP) y `reset-password`; plantilla `password_reset` | RF-050 | L | T-902, T-904 | ⬜ Pendiente |
-| T-911 | Portal | Páginas públicas `/forgot-password` y `/reset-password`; enlace desde `/login`; reenvío de `X-Forwarded-For` | RF-050 | M | T-910 | ⬜ Pendiente |
-| T-912 | Portal | Página `/tenants/{id}/users` (super_admin → `/admin`, tenant_admin → `/v1`) y botón en el detalle del tenant | RF-047, RF-048 | L | T-907, T-908 | ⬜ Pendiente |
-| T-913 | Portal | Página `/super-admins` y enlace desde `/tenants` | RF-049 | M | T-909 | ⬜ Pendiente |
-| T-914 | Tests | Tests de §11 de la DT (gestión, admin, super_admins, reseteo, revocación) | Todos | L | Cada tarea | ⬜ Pendiente |
-| T-915 | Docs | Actualizar RF-039/RF-040 (módulo 08), `CLAUDE.md` y la guía de integración con los endpoints nuevos | — | S | Al cerrar | ⬜ Pendiente |
+| T-901 | Portal | Página pública `/activate?token=` (activación de cuenta) | RF-046 | S | — | ✅ Hecho |
+| T-902 | Backend | Política de contraseña única de 12 caracteres (`PASSWORD_MIN_LENGTH`) en activación, cambio, reseteo y registro | RF-052 | S | — | ✅ Hecho |
+| T-903 | Backend | Migración 016: email en minúsculas + índice único `lower(email)`; login sin distinguir mayúsculas; columna `is_protected` que marca la cuenta raíz (L-1) | RF-052, RF-049 | M | — | ✅ Hecho |
+| T-904 | Backend | Sesiones por usuario (`app/services/sessions.py`): índice de refresh tokens y `revoke_all_sessions` | RF-051 | M | — | ✅ Hecho |
+| T-905 | Backend | `get_current_auth` rechaza access tokens anteriores a la revocación (`user_revoked_at`) | RF-051 | S | T-904 | ✅ Hecho |
+| T-906 | Backend | `user_management`: `Actor`, `ensure_can_manage`, roles asignables, defecto `viewer`, email único global, filtros `status`/`q`, auditoría | RF-047, RF-048, RF-052 | L | T-903, T-904 | ✅ Hecho |
+| T-907 | Backend | `/v1/users`: PATCH con `role` y restricciones; `POST /v1/users/{id}/password-reset` | RF-048 | M | T-906, T-910 | ✅ Hecho |
+| T-908 | Backend | `/admin/tenants/{id}/users`: POST, PATCH y `password-reset` | RF-047 | M | T-906, T-910 | ✅ Hecho |
+| T-909 | Backend | `/admin/super-admins` (GET, POST, PATCH, password-reset) con "al menos uno activo" atómico y `403` sobre la cuenta raíz | RF-049 | M | T-903, T-906, T-910 | ✅ Hecho |
+| T-910 | Backend | `password_reset.py`: `forgot-password` (respuesta única, límites 3/h email y 10/h IP) y `reset-password`; plantilla `password_reset` | RF-050 | L | T-902, T-904 | ✅ Hecho |
+| T-911 | Portal | Páginas públicas `/forgot-password` y `/reset-password`; enlace desde `/login`; reenvío de `X-Forwarded-For` | RF-050 | M | T-910 | ✅ Hecho |
+| T-912 | Portal | Página `/tenants/{id}/users` (super_admin → `/admin`, tenant_admin → `/v1`) y botón en el detalle del tenant | RF-047, RF-048 | L | T-907, T-908 | ✅ Hecho |
+| T-913 | Portal | Página `/super-admins` y enlace desde `/tenants` | RF-049 | M | T-909 | ✅ Hecho |
+| T-914 | Tests | Tests de §11 de la DT (gestión, admin, super_admins, reseteo, revocación) | Todos | L | Cada tarea | ✅ Hecho |
+| T-915 | Docs | Actualizar RF-039/RF-040 (módulo 08), `CLAUDE.md` y la guía de integración con los endpoints nuevos | — | S | Al cerrar | ✅ Hecho |
 | T-916 | Despliegue | **(Deiby)** Staging → verificación con Mailpit → prod. Reenviar activación a los admins pendientes de AWP y AutolavadoDemo. Prueba real de Resend | — | M | Todo | ⬜ Pendiente |
-| T-917 | Tests | `test_admin_auth.py`: que el fixture solo borre los super_admins `sa-test-*` que creó, nunca la cuenta raíz, y que los tests que exigen tabla vacía hagan `skip` | RF-052, L-4 | S | — | ⬜ Pendiente |
+| T-917 | Tests | `test_admin_auth.py`: que el fixture solo borre los super_admins `sa-test-*` que creó, nunca la cuenta raíz, y que los tests que exigen tabla vacía hagan `skip` | RF-052, L-4 | S | — | ✅ Hecho |
 
 ### Orden sugerido
 
@@ -103,7 +103,7 @@ Todos asignados a **Cristian Anacona**. Tamaño: S ≈ medio día · M ≈ 1–2
 
 | Riesgo | Mitigación |
 |---|---|
-| La migración 014 falla si aparecen emails duplicados | Comprobar en prod antes de desplegar (a 2026-11-05: 0 duplicados) |
+| La migración 016 falla si aparecen emails duplicados | Comprobar en prod antes de desplegar (a 2026-11-05: 0 duplicados) |
 | Resend en producción nunca se ha verificado de punta a punta | T-916 incluye una prueba real antes de cerrar |
 | Correr la suite contra staging borra su super_admin | T-917 antes que nada |
 | Un `GET` de Redis más por request (T-905) | Mismo coste que el tier del rate limit; medir en staging |

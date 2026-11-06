@@ -1,6 +1,7 @@
 import os
 import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import Request
@@ -100,12 +101,11 @@ def _row_label(row: dict) -> str:
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @ui.page("/login")
-def page_login(request: Request) -> None:
+def page_login(request: Request, email: str = "") -> None:
     theme.apply_theme()
     # IP del navegador, para que el límite de intentos del API cuente por origen
     # real y no por la IP del portal, que es la misma para todos.
-    forwarded = request.headers.get("x-forwarded-for", "")
-    browser_ip = forwarded.split(",")[-1].strip() or (request.client.host if request.client else "")
+    browser_ip = _browser_ip(request)
 
     # Centra la tarjeta en la pantalla (el contenedor de página es una columna flex)
     ui.query(".nicegui-content").classes("items-center justify-center").style(
@@ -121,7 +121,7 @@ def page_login(request: Request) -> None:
                 ui.label("Portal de administración").classes("mn-brand-sub")
 
         ui.label("Iniciar sesión").classes("mn-h2 mb-4")
-        email_input = ui.input("Email", placeholder="admin@micronuba.com").classes("w-full")
+        email_input = ui.input("Email", value=email, placeholder="admin@micronuba.com").classes("w-full")
         password_input = ui.input(
             "Contraseña", password=True, password_toggle_button=True
         ).classes("w-full mt-4")
@@ -169,6 +169,7 @@ def page_login(request: Request) -> None:
         ui.button("Ingresar", on_click=do_login).classes("w-full mt-4").props(
             'color="primary" unelevated'
         )
+        ui.link("¿Olvidaste tu contraseña?", "/forgot-password").classes("text-sm mt-4 self-center")
 
     ui.label(f"API: {API_BASE_URL}").classes("fixed bottom-2 right-4 text-xs mn-muted")
 
@@ -574,11 +575,17 @@ async def page_tenant_detail(tenant_id: str) -> None:
                     theme.tier_pill(tenant["subscription_tier"])
                     theme.status_pill(is_active)
                 ui.label(f"Creado el {theme.fmt_date(tenant['created_at'])}").classes("mn-muted")
-        ui.button(
-            "Suspender tenant" if is_active else "Reactivar tenant",
-            icon="pause" if is_active else "play_arrow",
-            on_click=suspend_dialog.open,
-        ).props(f'outline no-caps color="{"warning" if is_active else "positive"}"')
+        with ui.row().classes("items-center gap-2"):
+            ui.button(
+                "Gestionar usuarios",
+                icon="group",
+                on_click=lambda: ui.navigate.to(f"/tenants/{tenant_id}/users"),
+            ).props("outline no-caps color=primary")
+            ui.button(
+                "Suspender tenant" if is_active else "Reactivar tenant",
+                icon="pause" if is_active else "play_arrow",
+                on_click=suspend_dialog.open,
+            ).props(f'outline no-caps color="{"warning" if is_active else "positive"}"')
 
     # ── Información ───────────────────────────────────────────────────────────────
     with ui.card().classes("mn-card w-full"):
@@ -2035,6 +2042,726 @@ async def page_warehouses(tenant_id: str) -> None:
                             )
 
     await load_warehouses()
+
+
+# ─── Páginas públicas: activar cuenta y recuperar contraseña ─────────────────
+# No exigen sesión: el enlace del email es la credencial. Por eso no llaman a `_guard()`.
+
+# Misma política que el API (RN-052-4). El portal la valida antes de enviar; el API manda.
+PASSWORD_MIN_LENGTH = 12
+_LINK_EXPIRED = "El enlace no es válido o caducó."
+
+
+def _browser_ip(request: Request) -> str:
+    """IP del navegador, para que los límites del API cuenten por origen real y no por el portal."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[-1].strip() or (request.client.host if request.client else "")
+
+
+def _password_problem(password: str | None, repeated: str | None) -> str | None:
+    if not password or len(password) < PASSWORD_MIN_LENGTH:
+        return f"La contraseña debe tener al menos {PASSWORD_MIN_LENGTH} caracteres."
+    if password != repeated:
+        return "Las contraseñas no coinciden."
+    return None
+
+
+def _public_card(title: str, subtitle: str = "") -> ui.card:
+    """Tarjeta centrada con la marca, igual que el login. Devuelve la tarjeta para seguir añadiendo."""
+    theme.apply_theme()
+    ui.query(".nicegui-content").classes("items-center justify-center").style(
+        "min-height:85vh;max-width:none"
+    )
+    card = ui.card().classes("w-96 max-w-full p-8 gap-0")
+    with card:
+        with ui.row().classes("items-center gap-3 no-wrap mb-8"):
+            with ui.element("div").classes("mn-logo"):
+                ui.icon("cloud").classes("text-[22px]")
+            with ui.column().classes("gap-0"):
+                ui.label("MicroNuba").classes("mn-brand-name")
+                ui.label("Portal de administración").classes("mn-brand-sub")
+        ui.label(title).classes("mn-h2 mb-1")
+        if subtitle:
+            ui.label(subtitle).classes("text-sm mn-muted mb-4")
+    return card
+
+
+def _password_fields() -> tuple[ui.input, ui.input]:
+    first = ui.input("Nueva contraseña", password=True, password_toggle_button=True).classes("w-full")
+    second = ui.input("Repetir contraseña", password=True, password_toggle_button=True).classes("w-full mt-4")
+    ui.label(f"Mínimo {PASSWORD_MIN_LENGTH} caracteres.").classes("text-xs mn-muted mt-1")
+    return first, second
+
+
+def _done_view(message: str, detail: str, login_email: str = "") -> None:
+    ui.icon("check_circle").classes("text-positive text-5xl self-center")
+    ui.label(message).classes("mn-h2 text-center mt-2")
+    ui.label(detail).classes("text-sm mn-muted text-center mb-4")
+    target = f"/login?email={quote(login_email)}" if login_email else "/login"
+    ui.button("Iniciar sesión", on_click=lambda: ui.navigate.to(target)).classes("w-full").props(
+        'color="primary" unelevated no-caps'
+    )
+
+
+@ui.page("/activate")
+def page_activate(token: str = "") -> None:
+    card = _public_card("Activa tu cuenta", "Elige una contraseña para empezar a usar la plataforma.")
+    with card:
+        if not token:
+            ui.label(f"{_LINK_EXPIRED} Pide a tu administrador que te reenvíe la activación.").classes(
+                "text-negative text-sm"
+            )
+            ui.link("Ir a iniciar sesión", "/login").classes("text-sm mt-4")
+            return
+
+        form = ui.column().classes("w-full gap-0")
+        with form:
+            password, repeated = _password_fields()
+            error = ui.label("").classes("text-negative text-sm mt-2")
+
+            async def submit() -> None:
+                problem = _password_problem(password.value, repeated.value)
+                if problem:
+                    error.set_text(problem)
+                    return
+                error.set_text("")
+                try:
+                    data = await api.activate_account(token, password.value)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 410:
+                        error.set_text(
+                            f"{_LINK_EXPIRED} Pide a tu administrador que te reenvíe la activación."
+                        )
+                    else:
+                        error.set_text(_err_msg(e))
+                    return
+                except Exception as ex:
+                    error.set_text(f"No se pudo conectar: {ex}")
+                    return
+                form.clear()
+                with form:
+                    _done_view(
+                        "Cuenta activada",
+                        "Ya puedes iniciar sesión con tu nueva contraseña.",
+                        data.get("email") or "",
+                    )
+
+            repeated.on("keydown.enter", submit)
+            ui.button("Activar cuenta", on_click=submit).classes("w-full mt-4").props(
+                'color="primary" unelevated no-caps'
+            )
+
+
+@ui.page("/forgot-password")
+def page_forgot_password(request: Request) -> None:
+    browser_ip = _browser_ip(request)
+    card = _public_card(
+        "¿Olvidaste tu contraseña?", "Escribe tu email y te enviaremos un enlace para restablecerla."
+    )
+    with card:
+        form = ui.column().classes("w-full gap-0")
+        with form:
+            email = ui.input("Email").classes("w-full")
+            error = ui.label("").classes("text-negative text-sm mt-2")
+
+            async def submit() -> None:
+                address = (email.value or "").strip()
+                if "@" not in address:
+                    error.set_text("Escribe un email válido.")
+                    return
+                error.set_text("")
+                try:
+                    data = await api.forgot_password(address, browser_ip)
+                except httpx.HTTPStatusError as e:
+                    # 429 es el único caso que no responde lo mismo para todos: es un límite de uso
+                    error.set_text(_err_msg(e) if e.response.status_code == 429 else "No se pudo enviar. Inténtalo de nuevo.")
+                    return
+                except Exception as ex:
+                    error.set_text(f"No se pudo conectar: {ex}")
+                    return
+                form.clear()
+                with form:
+                    ui.icon("mark_email_read").classes("text-primary text-5xl self-center")
+                    # Siempre el mensaje del API, idéntico exista o no el email (RN-050-1)
+                    ui.label(data.get("message", "")).classes("text-sm text-center mt-2 mb-4")
+                    ui.link("Volver a iniciar sesión", "/login").classes("text-sm self-center")
+
+            email.on("keydown.enter", submit)
+            ui.button("Enviar enlace", on_click=submit).classes("w-full mt-4").props(
+                'color="primary" unelevated no-caps'
+            )
+            ui.link("Volver a iniciar sesión", "/login").classes("text-sm mt-4 self-center")
+
+
+@ui.page("/reset-password")
+def page_reset_password(request: Request, token: str = "") -> None:
+    browser_ip = _browser_ip(request)
+    card = _public_card("Restablece tu contraseña", "Elige una contraseña nueva para tu cuenta.")
+    with card:
+        if not token:
+            ui.label(_LINK_EXPIRED).classes("text-negative text-sm")
+            ui.link("Solicitar un enlace nuevo", "/forgot-password").classes("text-sm mt-4")
+            return
+
+        form = ui.column().classes("w-full gap-0")
+        with form:
+            password, repeated = _password_fields()
+            error = ui.label("").classes("text-negative text-sm mt-2")
+            retry_link = ui.link("Solicitar un enlace nuevo", "/forgot-password").classes("text-sm mt-2")
+            retry_link.set_visibility(False)
+
+            async def submit() -> None:
+                problem = _password_problem(password.value, repeated.value)
+                if problem:
+                    error.set_text(problem)
+                    return
+                error.set_text("")
+                try:
+                    await api.reset_password(token, password.value, browser_ip)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 400:
+                        error.set_text(_LINK_EXPIRED)
+                        retry_link.set_visibility(True)
+                    else:
+                        error.set_text(_err_msg(e))
+                    return
+                except Exception as ex:
+                    error.set_text(f"No se pudo conectar: {ex}")
+                    return
+                form.clear()
+                with form:
+                    _done_view(
+                        "Contraseña actualizada",
+                        "Cerramos tus sesiones abiertas. Inicia sesión con tu contraseña nueva.",
+                    )
+
+            repeated.on("keydown.enter", submit)
+            ui.button("Cambiar contraseña", on_click=submit).classes("w-full mt-4").props(
+                'color="primary" unelevated no-caps'
+            )
+
+
+# ─── Usuarios (RF-047, RF-048) y super admins (RF-049) ────────────────────────
+# Una sola tabla y los mismos diálogos para las dos pantallas. El super_admin gestiona los
+# usuarios de cualquier tenant por /admin; el tenant_admin, los de su propio tenant por /v1.
+
+_ROLE_NAMES = {
+    "super_admin": "Super admin",
+    "tenant_admin": "Administrador",
+    "inventory_manager": "Gestor de inventario",
+    "viewer": "Solo lectura",
+}
+_STATUS_NAMES = {"active": "Activo", "pending": "Pendiente", "disabled": "Desactivado"}
+_STATUS_FILTER = {"": "Todos", "active": "Activos", "pending": "Pendientes", "disabled": "Desactivados"}
+_USERS_PAGE_SIZE = 20
+
+# Lo que cada rol puede asignar (RN-047-1, RN-048-1). El API lo vuelve a comprobar.
+_ASSIGNABLE = {
+    "super_admin": ["tenant_admin", "inventory_manager", "viewer"],
+    "tenant_admin": ["inventory_manager", "viewer"],
+}
+
+_USER_COLUMNS = [
+    {"name": "name", "label": "Usuario", "field": "full_name", "align": "left"},
+    {"name": "role", "label": "Rol", "field": "role_name", "align": "left"},
+    {"name": "status", "label": "Estado", "field": "status_name", "align": "left"},
+    {"name": "last_login", "label": "Último acceso", "field": "last_login_str", "align": "left"},
+    {"name": "created", "label": "Alta", "field": "created_str", "align": "left"},
+    {"name": "actions", "label": "", "field": "id", "align": "right"},
+]
+
+_USER_CELL_NAME = """
+    <q-td :props="props">
+        <div class="mn-tenant-link" style="cursor: default">
+            <span class="mn-avatar" style="width:38px;height:38px;border-radius:10px;font-size:16px">
+                {{ props.row.full_name.charAt(0).toUpperCase() }}
+            </span>
+            <span class="mn-tenant-text">
+                <span class="mn-tenant-name">{{ props.row.full_name }}</span>
+                <span class="mn-mono mn-tenant-slug">{{ props.row.email }}</span>
+            </span>
+        </div>
+    </q-td>
+"""
+
+_USER_CELL_STATUS = """
+    <q-td :props="props">
+        <span class="mn-pill"
+              :class="props.row.status === 'active' ? 'mn-pill--ok'
+                      : props.row.status === 'pending' ? 'mn-pill--warn' : ''">
+            <span class="mn-dot"></span>{{ props.row.status_name }}
+        </span>
+        <span v-if="props.row.is_protected" class="mn-pill mn-pill--root" style="margin-left:6px">Raíz</span>
+        <span v-if="props.row.is_me" class="mn-pill mn-pill--root" style="margin-left:6px">Tú</span>
+    </q-td>
+"""
+
+_USER_CELL_MUTED = """<q-td :props="props" class="mn-muted">{{ props.value }}</q-td>"""
+
+# La cuenta raíz no tiene acciones (L-1). Tampoco las ve un tenant_admin sobre otro tenant_admin
+# (RN-048-2). Es una ayuda visual: el API es quien lo impone.
+_USER_CELL_ACTIONS = """
+    <q-td :props="props" auto-width>
+        <span v-if="!props.row.can_manage" class="mn-muted" style="font-size:12px">Sin acciones</span>
+        <q-btn v-else flat round dense icon="more_vert" color="grey-7"
+               :aria-label="'Acciones de ' + props.row.full_name">
+            <q-menu auto-close>
+                <q-list style="min-width: 240px">
+                    <q-item clickable @click="$parent.$emit('edit', props.row)">
+                        <q-item-section avatar><q-icon name="edit" /></q-item-section>
+                        <q-item-section>Editar</q-item-section>
+                    </q-item>
+                    <q-item v-if="props.row.status === 'pending' && props.row.can_resend" clickable
+                            @click="$parent.$emit('resend', props.row)">
+                        <q-item-section avatar><q-icon name="forward_to_inbox" /></q-item-section>
+                        <q-item-section>Reenviar activación</q-item-section>
+                    </q-item>
+                    <q-item v-if="props.row.status === 'active'" clickable
+                            @click="$parent.$emit('reset', props.row)">
+                        <q-item-section avatar><q-icon name="lock_reset" /></q-item-section>
+                        <q-item-section>Forzar reseteo de contraseña</q-item-section>
+                    </q-item>
+                    <q-item v-if="props.row.status === 'active' && !props.row.is_me" clickable
+                            @click="$parent.$emit('deactivate', props.row)">
+                        <q-item-section avatar><q-icon name="person_off" /></q-item-section>
+                        <q-item-section>Desactivar</q-item-section>
+                    </q-item>
+                    <q-item v-if="props.row.status === 'disabled'" clickable
+                            @click="$parent.$emit('reactivate', props.row)">
+                        <q-item-section avatar><q-icon name="person_check" /></q-item-section>
+                        <q-item-section>Reactivar</q-item-section>
+                    </q-item>
+                </q-list>
+            </q-menu>
+        </q-btn>
+    </q-td>
+"""
+
+
+def _user_rows(items: list[dict], actor_role: str, *, can_resend: bool = True) -> list[dict]:
+    me = app.storage.user.get("user_email", "").lower()
+    rows = []
+    for u in items:
+        is_me = u["email"].lower() == me
+        rows.append({
+            **u,
+            "is_me": is_me,
+            "role_name": _ROLE_NAMES.get(u["role"], u["role"]),
+            "status_name": _STATUS_NAMES.get(u["status"], u["status"]),
+            "last_login_str": theme.fmt_datetime(u["last_login_at"]) if u.get("last_login_at") else "Nunca",
+            "created_str": theme.fmt_date(u["created_at"]),
+            # Los super admins pendientes se reactivan con «olvidé mi contraseña», que reenvía la activación
+            "can_resend": can_resend,
+            "can_manage": not u.get("is_protected")
+            and not (actor_role == "tenant_admin" and u["role"] == "tenant_admin" and not is_me),
+        })
+    return rows
+
+
+def _user_table(rows: list[dict]) -> ui.table:
+    tbl = ui.table(columns=_USER_COLUMNS, rows=rows, row_key="id", pagination=0).classes("w-full")
+    tbl.props('hide-bottom no-data-label="Ningún usuario coincide"')
+    tbl.add_slot("body-cell-name", _USER_CELL_NAME)
+    tbl.add_slot("body-cell-status", _USER_CELL_STATUS)
+    tbl.add_slot("body-cell-last_login", _USER_CELL_MUTED)
+    tbl.add_slot("body-cell-created", _USER_CELL_MUTED)
+    tbl.add_slot("body-cell-actions", _USER_CELL_ACTIONS)
+    return tbl
+
+
+class _Confirm:
+    """Un solo diálogo de confirmación reutilizable: título, texto, aviso opcional y acción."""
+
+    def __init__(self) -> None:
+        self._action: Any = None
+        self.dialog = ui.dialog()
+        with self.dialog, ui.card().classes("p-5 w-[420px]"):
+            self.title = ui.label("").classes("font-bold text-base mb-1")
+            self.message = ui.label("").classes("text-sm mn-muted")
+            self.warning = ui.label("").classes("text-sm text-negative mt-2")
+            with ui.row().classes("justify-end gap-2 mt-4 w-full"):
+                ui.button("Cancelar", on_click=self.dialog.close).props("flat no-caps")
+                self.confirm_btn = ui.button("Confirmar", on_click=self._run).props("unelevated no-caps")
+
+    def ask(
+        self, title: str, message: str, action: Any, *, warning: str = "", label: str = "Confirmar", color: str = "primary"
+    ) -> None:
+        self._action = action
+        self.title.set_text(title)
+        self.message.set_text(message)
+        self.warning.set_text(warning)
+        self.warning.set_visibility(bool(warning))
+        self.confirm_btn.set_text(label)
+        self.confirm_btn.props(f'color="{color}"')
+        self.dialog.open()
+
+    async def _run(self) -> None:
+        self.dialog.close()
+        if self._action:
+            await self._action()
+
+
+def _user_form_dialog(title: str, *, with_role: bool, roles: list[str]) -> dict:
+    """Diálogo de alta/edición. Devuelve sus campos para que la página los rellene y lea."""
+    f: dict[str, Any] = {}
+    f["dialog"] = ui.dialog().props("persistent")
+    with f["dialog"], ui.card().classes("w-[460px] p-6"):
+        f["title"] = ui.label(title).classes("text-xl font-bold mb-3")
+        f["email"] = ui.input("Email *", placeholder="persona@empresa.com").classes("w-full")
+        f["name"] = ui.input("Nombre completo *").classes("w-full mt-2")
+        f["role"] = ui.select(
+            {r: _ROLE_NAMES[r] for r in roles}, label="Rol *", value=roles[0] if roles else None
+        ).classes("w-full mt-2")
+        f["role"].set_visibility(with_role)
+        f["hint"] = ui.label("").classes("text-xs mn-muted mt-1")
+        f["error"] = ui.label("").classes("text-negative text-sm mt-1")
+        with ui.row().classes("w-full justify-end mt-4 gap-2"):
+            ui.button("Cancelar", on_click=f["dialog"].close).props("flat no-caps")
+            f["save"] = ui.button("Guardar").props('unelevated no-caps color="primary"')
+    return f
+
+
+@ui.page("/tenants/{tenant_id}/users")
+async def page_users(tenant_id: str) -> None:
+    if not _token():
+        ui.navigate.to("/login")
+        return
+    role = app.storage.user.get("role", "")
+    own_tenant = app.storage.user.get("tenant_id", "")
+    if role == "tenant_admin" and tenant_id != own_tenant:
+        ui.navigate.to(f"/tenants/{own_tenant}/users")  # un tenant_admin solo ve su tenant
+        return
+    if role not in ("super_admin", "tenant_admin"):
+        ui.navigate.to("/login")
+        return
+
+    tenant = await theme.shell("users", tenant_id=tenant_id)
+    theme.sub_header(tenant, tenant_id, "Usuarios")
+    roles = _ASSIGNABLE[role]
+    state: dict[str, Any] = {"page": 1, "status": "", "q": ""}
+    confirm = _Confirm()
+
+    create = _user_form_dialog("Nuevo usuario", with_role=True, roles=roles)
+    create["hint"].set_text("Recibirá un email para activar su cuenta y elegir su contraseña.")
+    edit = _user_form_dialog("Editar usuario", with_role=True, roles=roles)
+    edit["email"].props("readonly")  # el email no se edita (RN-047-4)
+    edit["hint"].set_text("El email no se puede cambiar: para usar otro, crea un usuario nuevo.")
+    editing: dict[str, Any] = {}
+
+    async def refresh() -> None:
+        await load()
+
+    async def call(action: Any, ok_message: str) -> None:
+        try:
+            await action
+            ui.notify(ok_message, type="positive")
+            await refresh()
+        except SessionExpiredError:
+            return
+        except Exception as ex:
+            ui.notify(_err_msg(ex), type="negative")
+
+    async def do_create() -> None:
+        create["error"].set_text("")
+        email = (create["email"].value or "").strip()
+        name = (create["name"].value or "").strip()
+        if "@" not in email or len(name) < 2:
+            create["error"].set_text("Email válido y nombre (mínimo 2 caracteres) son obligatorios.")
+            return
+        try:
+            await api.create_user(
+                _token(), role, tenant_id, {"email": email, "full_name": name, "role": create["role"].value}
+            )
+        except Exception as ex:
+            create["error"].set_text(_err_msg(ex))
+            return
+        create["dialog"].close()
+        ui.notify("Usuario creado. Se envió el email de activación.", type="positive")
+        await refresh()
+
+    async def do_edit() -> None:
+        edit["error"].set_text("")
+        name = (edit["name"].value or "").strip()
+        if len(name) < 2:
+            edit["error"].set_text("El nombre debe tener al menos 2 caracteres.")
+            return
+        payload: dict[str, Any] = {}
+        if name != editing["full_name"]:
+            payload["full_name"] = name
+        if edit["role"].visible and edit["role"].value != editing["role"]:
+            payload["role"] = edit["role"].value
+        if not payload:
+            edit["dialog"].close()
+            return
+        try:
+            await api.update_user(_token(), role, tenant_id, editing["id"], payload)
+        except Exception as ex:
+            edit["error"].set_text(_err_msg(ex))
+            return
+        edit["dialog"].close()
+        ui.notify("Usuario actualizado.", type="positive")
+        await refresh()
+
+    create["save"].on_click(do_create)
+    edit["save"].on_click(do_edit)
+
+    def open_create() -> None:
+        create["email"].set_value("")
+        create["name"].set_value("")
+        create["role"].set_value("viewer")
+        create["error"].set_text("")
+        create["dialog"].open()
+
+    async def on_edit(e: Any) -> None:
+        u = e.args
+        editing.clear()
+        editing.update(u)
+        edit["email"].set_value(u["email"])
+        edit["name"].set_value(u["full_name"])
+        # Nadie cambia su propio rol: el tenant podría quedarse sin administrador
+        edit["role"].set_visibility(not u["is_me"] and u["role"] in roles)
+        if u["role"] in roles:
+            edit["role"].set_value(u["role"])
+        edit["error"].set_text("")
+        edit["dialog"].open()
+
+    async def is_last_active_admin(u: dict) -> bool:
+        """RN-047-3: aviso al desactivar al último tenant_admin activo. Solo si el conteo es seguro."""
+        if u["role"] != "tenant_admin":
+            return False
+        try:
+            data = await api.list_users(_token(), role, tenant_id, status="active", size=100)
+        except Exception:
+            return False
+        admins = [x for x in data["items"] if x["role"] == "tenant_admin"]
+        return data["total"] <= 100 and len(admins) == 1
+
+    async def on_deactivate(e: Any) -> None:
+        u = e.args
+        warning = (
+            "El tenant se quedará sin administrador activo: nadie podrá gestionar a su equipo "
+            "hasta que un super admin cree otro."
+            if await is_last_active_admin(u)
+            else ""
+        )
+        confirm.ask(
+            f"¿Desactivar a {u['full_name']}?",
+            "No podrá iniciar sesión y se cerrarán sus sesiones abiertas ahora mismo.",
+            lambda: call(
+                api.update_user(_token(), role, tenant_id, u["id"], {"is_active": False}), "Usuario desactivado."
+            ),
+            warning=warning,
+            label="Desactivar",
+            color="negative",
+        )
+
+    async def on_reactivate(e: Any) -> None:
+        u = e.args
+        await call(api.update_user(_token(), role, tenant_id, u["id"], {"is_active": True}), "Usuario reactivado.")
+
+    async def on_resend(e: Any) -> None:
+        u = e.args
+        await call(api.resend_user_activation(_token(), role, tenant_id, u["id"]), f"Activación reenviada a {u['email']}.")
+
+    async def on_reset(e: Any) -> None:
+        u = e.args
+        confirm.ask(
+            f"¿Forzar el reseteo de {u['full_name']}?",
+            "Le enviamos un email para elegir una contraseña nueva y cerramos sus sesiones abiertas. "
+            "Tú nunca ves ni fijas su contraseña.",
+            lambda: call(
+                api.force_user_reset(_token(), role, tenant_id, u["id"]), "Email de reseteo enviado."
+            ),
+            label="Enviar reseteo",
+            color="warning",
+        )
+
+    # ── Barra de herramientas y listado ───────────────────────────────────────
+    with ui.row().classes("w-full items-center gap-3"):
+        search = ui.input(placeholder="Buscar por email o nombre").props(
+            'dense outlined clearable debounce=400 aria-label="Buscar usuario"'
+        ).classes("w-72")
+        status_select = ui.select(_STATUS_FILTER, value="", label="Estado").props("dense outlined").classes("w-44")
+        ui.space()
+        ui.button("Nuevo usuario", icon="add", on_click=open_create).props("unelevated no-caps color=primary")
+
+    container = ui.column().classes("w-full gap-3")
+
+    async def load() -> None:
+        container.clear()
+        with container:
+            try:
+                data = await api.list_users(
+                    _token(), role, tenant_id,
+                    page=state["page"], size=_USERS_PAGE_SIZE, status=state["status"] or None, q=state["q"] or None,
+                )
+            except SessionExpiredError:
+                return
+            except Exception as ex:
+                ui.notify(f"Error cargando usuarios: {_err_msg(ex)}", type="negative")
+                return
+
+            total = data["total"]
+            ui.label(theme.plural(total, "usuario")).classes("text-sm mn-muted")
+            tbl = _user_table(_user_rows(data["items"], role))
+            tbl.on("edit", on_edit)
+            tbl.on("resend", on_resend)
+            tbl.on("reset", on_reset)
+            tbl.on("deactivate", on_deactivate)
+            tbl.on("reactivate", on_reactivate)
+
+            pages = max(1, -(-total // _USERS_PAGE_SIZE))
+            if pages > 1:
+                async def go(e: Any) -> None:
+                    state["page"] = e.value
+                    await load()
+
+                ui.pagination(1, pages, value=state["page"], on_change=go, direction_links=True).props("flat")
+
+    async def on_filters(_: Any = None) -> None:
+        state["q"] = (search.value or "").strip()
+        state["status"] = status_select.value or ""
+        state["page"] = 1
+        await load()
+
+    search.on_value_change(on_filters)
+    status_select.on_value_change(on_filters)
+    await load()
+
+
+@ui.page("/super-admins")
+async def page_super_admins() -> None:
+    if not _token():
+        ui.navigate.to("/login")
+        return
+    if app.storage.user.get("role") != "super_admin":
+        ui.navigate.to("/login")
+        return
+
+    await theme.shell("super_admins")
+    theme.breadcrumb(("Super admins", None))
+    ui.label("Super admins").classes("mn-h1")
+    ui.label(
+        "Administran toda la plataforma. La cuenta raíz del ambiente no se puede desactivar, editar "
+        "ni resetear: solo su dueño cambia su contraseña."
+    ).classes("mn-muted").style("margin-top:-16px")
+
+    confirm = _Confirm()
+    create = _user_form_dialog("Nuevo super admin", with_role=False, roles=[])
+    create["hint"].set_text("Recibirá un email para activar su cuenta. No será cuenta raíz.")
+    edit = _user_form_dialog("Editar super admin", with_role=False, roles=[])
+    edit["email"].props("readonly")
+    edit["hint"].set_text("Solo se puede cambiar el nombre.")
+    editing: dict[str, Any] = {}
+
+    async def call(action: Any, ok_message: str) -> None:
+        try:
+            await action
+            ui.notify(ok_message, type="positive")
+            await load()
+        except SessionExpiredError:
+            return
+        except Exception as ex:
+            ui.notify(_err_msg(ex), type="negative")
+
+    async def do_create() -> None:
+        create["error"].set_text("")
+        email = (create["email"].value or "").strip()
+        name = (create["name"].value or "").strip()
+        if "@" not in email or len(name) < 2:
+            create["error"].set_text("Email válido y nombre (mínimo 2 caracteres) son obligatorios.")
+            return
+        try:
+            await api.create_super_admin(_token(), {"email": email, "full_name": name})
+        except Exception as ex:
+            create["error"].set_text(_err_msg(ex))
+            return
+        create["dialog"].close()
+        ui.notify("Super admin creado. Se envió el email de activación.", type="positive")
+        await load()
+
+    async def do_edit() -> None:
+        edit["error"].set_text("")
+        name = (edit["name"].value or "").strip()
+        if len(name) < 2:
+            edit["error"].set_text("El nombre debe tener al menos 2 caracteres.")
+            return
+        if name != editing["full_name"]:
+            try:
+                await api.update_super_admin(_token(), editing["id"], {"full_name": name})
+            except Exception as ex:
+                edit["error"].set_text(_err_msg(ex))
+                return
+            ui.notify("Super admin actualizado.", type="positive")
+        edit["dialog"].close()
+        await load()
+
+    create["save"].on_click(do_create)
+    edit["save"].on_click(do_edit)
+
+    def open_create() -> None:
+        create["email"].set_value("")
+        create["name"].set_value("")
+        create["error"].set_text("")
+        create["dialog"].open()
+
+    async def on_edit(e: Any) -> None:
+        editing.clear()
+        editing.update(e.args)
+        edit["email"].set_value(e.args["email"])
+        edit["name"].set_value(e.args["full_name"])
+        edit["error"].set_text("")
+        edit["dialog"].open()
+
+    async def on_deactivate(e: Any) -> None:
+        u = e.args
+        confirm.ask(
+            f"¿Desactivar a {u['full_name']}?",
+            "No podrá iniciar sesión y se cerrarán sus sesiones abiertas ahora mismo. "
+            "Siempre debe quedar al menos un super admin activo.",
+            lambda: call(api.update_super_admin(_token(), u["id"], {"is_active": False}), "Super admin desactivado."),
+            label="Desactivar",
+            color="negative",
+        )
+
+    async def on_reactivate(e: Any) -> None:
+        await call(api.update_super_admin(_token(), e.args["id"], {"is_active": True}), "Super admin reactivado.")
+
+    async def on_reset(e: Any) -> None:
+        u = e.args
+        confirm.ask(
+            f"¿Forzar el reseteo de {u['full_name']}?",
+            "Le enviamos un email para elegir una contraseña nueva y cerramos sus sesiones abiertas.",
+            lambda: call(api.force_super_admin_reset(_token(), u["id"]), "Email de reseteo enviado."),
+            label="Enviar reseteo",
+            color="warning",
+        )
+
+    with ui.row().classes("w-full items-center"):
+        ui.space()
+        ui.button("Nuevo super admin", icon="add", on_click=open_create).props("unelevated no-caps color=primary")
+
+    container = ui.column().classes("w-full gap-3")
+
+    async def load() -> None:
+        container.clear()
+        with container:
+            try:
+                items = await api.list_super_admins(_token())
+            except SessionExpiredError:
+                return
+            except Exception as ex:
+                ui.notify(f"Error cargando super admins: {_err_msg(ex)}", type="negative")
+                return
+            ui.label(theme.plural(len(items), "super admin")).classes("text-sm mn-muted")
+            tbl = _user_table(_user_rows(items, "super_admin", can_resend=False))
+            tbl.on("edit", on_edit)
+            tbl.on("reset", on_reset)
+            tbl.on("deactivate", on_deactivate)
+            tbl.on("reactivate", on_reactivate)
+            # Los super admins pendientes se activan con su enlace; "olvidé mi contraseña" lo reenvía
+
+    await load()
 
 
 # ─── Root redirect ────────────────────────────────────────────────────────────

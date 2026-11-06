@@ -43,7 +43,7 @@ core_backend/                   # FastAPI backend
 │       ├── security.py       # JWT, API key, password hashing
 │       ├── redis_client.py   # Redis connection pool
 │       └── exceptions.py     # Custom exception handlers
-├── alembic/                  # Database migrations (15 revisions)
+├── alembic/                  # Database migrations (16 revisions)
 ├── tests/                    # 23+ test modules (RLS isolation, auth, etc.)
 ├── scripts/                  # Utilities (export_openapi.py)
 ├── requirements.txt          # Python dependencies
@@ -262,6 +262,9 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 - `/tenants/{id}` — Detail with Acciones: Suspender, Gestionar Productos, Gestionar Stock, Gestionar Almacenes; sección Sedes; API Keys
 - `/tenants/{id}/products` — CRUD productos (SKU, nombre, precio venta, UOM, descripción)
 - `/tenants/{id}/stock` — Ver saldos, entrada de stock, ajuste por fila, eliminar (ajuste a 0)
+- `/tenants/{id}/users` — Usuarios del tenant: crear, editar, desactivar/reactivar, reenviar activación, forzar reseteo (super_admin: cualquier tenant; tenant_admin: solo el suyo)
+- `/super-admins` — Gestión de super_admins (solo super_admin); la cuenta raíz aparece como «Raíz» y sin acciones
+- `/activate`, `/forgot-password`, `/reset-password` — **Públicas** (sin sesión): el enlace del email es la credencial
 
 **Key Files**:
 - `web_frontend/app/main.py` — All UI pages
@@ -301,7 +304,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 
 ### Alembic Migrations
 
-15 revisions in `core_backend/alembic/versions/`:
+16 revisions in `core_backend/alembic/versions/`:
 1. **001** — Initial schema
 2. **002** — Catalog enhancements
 3. **003** — Inventory (transactions, ledgers, reservations)
@@ -317,6 +320,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 13. **013** — `sale_price` (Numeric 18,4, nullable) en tabla `products`
 14. **014** — `tenants.external_provider/external_id/parent_tenant_id/tax_id` — sedes aprovisionadas desde Appits
 15. **015** — bin y proveedor en saldos/ledger/lotes, `reservation_allocations`, consecutivo de entradas (`document_sequences`)
+16. **016** — `users.is_protected` (cuenta raíz) y email único en toda la plataforma (índice sobre `lower(email)`)
 
 **Migration Commands**:
 ```bash
@@ -350,7 +354,7 @@ Critical settings in `.env`:
 
 ### Test Modules
 
-All tests in `core_backend/tests/` (28 módulos, 386 tests):
+All tests in `core_backend/tests/` (32 módulos, 455 tests):
 - `test_auth.py`, `test_admin_auth.py`, `test_activation.py` — Auth & admin
 - `test_inventory.py`, `test_reservations.py`, `test_cycle_counts.py` — Inventory
 - `test_products.py`, `test_categories.py`, `test_suppliers.py` — Catalog
@@ -358,6 +362,8 @@ All tests in `core_backend/tests/` (28 módulos, 386 tests):
 - `test_rls_isolation.py`, `test_api_key_rotation.py` — Security
 - `test_rls_enforcement.py` — El rol no puede saltarse RLS; el contexto sobrevive al commit
 - `test_activation_delivery.py` — El email de activación se encola; reenvío como super_admin
+- `test_user_management.py`, `test_admin_users.py`, `test_super_admins.py` — Reglas de equipo, permisos, auditoría y cuenta raíz protegida
+- `test_password_reset.py`, `test_session_revocation.py` — «Olvidé mi contraseña», límites y cierre inmediato de sesiones
 - `test_lot_location_traceability.py` — Bins, proveedor del lote, FEFO/FIFO y reparto en reservas, filtros, consecutivo de entradas, compatibilidad y aislamiento
 - `test_webhooks.py`, `test_tasks.py` — Async & webhooks
 
@@ -373,9 +379,10 @@ pytest -v --tb=short        # Verbose with short tracebacks
 pytest -s                   # Show print statements
 ```
 
-**Contra staging** — ⚠️ **Los tests escriben en la base de datos real de staging.** Hasta que se
-complete T-917 (Sprint 9), `tests/test_admin_auth.py` borra todos los super_admins: el 2026-10-26
-borró la cuenta raíz de staging. Solo lo ejecuta Deiby. `Dockerfile.prod` no instala pytest ni
+**Contra staging** — ⚠️ **Los tests escriben en la base de datos real de staging.** El 2026-10-26 un
+fixture de `tests/test_admin_auth.py` borró la cuenta raíz de staging; T-917 (Sprint 9) lo eliminó y ahora
+ningún test borra ni modifica usuarios por rol (lo vigila `test_ningun_test_borra_ni_modifica_usuarios_por_rol`).
+Aun así, los tests escriben datos reales: solo lo ejecuta Deiby. `Dockerfile.prod` no instala pytest ni
 copia `tests/`, así que hay que montar el código y añadir las dependencias al vuelo:
 
 ```bash
@@ -667,29 +674,53 @@ de crear uno sin llamar al API a mano.
 `f144b57` (2026-10-26): el rate limit lee `tenants.subscription_tier` y lo cachea 5 min en
 `tenant_tier:<id>`.
 
-## Trabajo en curso: Módulo 09 — Gestión de Usuarios (Sprint 9)
+## Módulo 09 — Gestión de Usuarios (Sprint 9): implementado (2026-11-06)
 
-Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno**. Antes de tocar nada de
-usuarios, autenticación o contraseñas, leer:
-
-- `doc/Planeacion/Sprints/sprint_09.md` — tareas T-901 a T-917 y su orden (T-917 primero)
-- `doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md` — RF-046 a RF-052
-- `doc/Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md` — contratos, migración 014,
-  tests y **§13: guía para desarrollar con Claude**
+Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno** (T-916 pendiente). Antes de tocar
+usuarios, autenticación o contraseñas, leer `doc/Planeacion/Sprints/sprint_09.md`,
+`doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md` (RF-046 a RF-052) y
+`doc/Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md` (§13: guía para desarrollar con Claude).
+Guía para quien integra: `doc/integracion/gestion_usuarios.md`.
 
 **Lineamientos que no se negocian:**
 
-- **L-1 — Cuenta raíz protegida.** El super_admin actual de cada ambiente es la cuenta desde la
-  que se crean todos los demás usuarios. Ningún código, migración, script ni test puede borrarla,
-  desactivarla, cambiarle el rol o el nombre, ni forzar su reseteo. Se marca con
-  `users.is_protected = true` (migración 014).
+- **L-1 — Cuenta raíz protegida.** El super_admin actual de cada ambiente es la cuenta desde la que se
+  crean todos los demás usuarios. Ningún código, migración, script ni test puede borrarla, desactivarla,
+  cambiarle el rol o el nombre, ni forzar su reseteo. Se marca con `users.is_protected = true`
+  (migración 016). La comprobación vive **en el servicio** (`ensure_can_manage`, `super_admins.py`), no solo en el portal.
 - **L-3** — No se borran usuarios de forma física: se desactivan.
 - **L-4** — Los tests nunca borran ni modifican datos que no crearon. Nada de `DELETE`/`UPDATE`
   filtrando por rol: solo por el `id` que creó el propio test.
 - **L-5** — Ningún administrador conoce ni fija la contraseña de otro: solo se envían emails.
 - **Desarrollo y tests, en local.** No correr tests ni scripts contra staging o producción, no
   conectarse al VPS y no desplegar: eso lo hace Deiby.
-- Rama `feature/T-9xx-…` desde `staging` y un PR por tarea hacia `staging`.
+
+**Qué hay (backend)**
+
+- `app/services/user_management.py` — un solo sitio para las reglas: `Actor`, `ASSIGNABLE_ROLES`,
+  `ensure_can_manage` (protegida → 403; un tenant_admin no toca a otro ni se desactiva ni se cambia el rol),
+  alta con email único **global** (`email_exists` con sesión de sistema), PATCH con auditoría de valores
+  anterior y nuevo, reseteo forzado y reenvío de activación. Comparten servicio `/v1/users` y `/admin/tenants/{id}/users`.
+- `app/services/super_admins.py` — `/admin/super-admins`; «siempre queda uno activo» con bloqueo de filas (`_lock_active_super_admin_ids`).
+- `app/services/password_reset.py` — `forgot-password` (respuesta única, 3/h por email y 10/h por IP) y `reset-password`
+  (un solo uso, invalida el anterior, cierra sesiones, borra el bloqueo de login, aviso por email).
+- `app/services/sessions.py` — índice `user_sessions:<id>` y `revoke_all_sessions`; `get_current_auth` rechaza los
+  access tokens anteriores a `user_revoked_at:<id>` (un `GET` de Redis por request). El JWT lleva `iat_ms` para comparar al milisegundo.
+- `PASSWORD_MIN_LENGTH = 12` en `app/core/security.py`, una sola política para activación, cambio, reseteo y registro.
+- **Estado de un usuario** = derivado de `is_active` + `must_change_password` (`pending` / `active` / `disabled`); `UserResponse.status`.
+- Solo se activa o se reenvía la activación a un usuario **pendiente**: antes un enlace viejo podía reactivar a uno desactivado.
+- `api_consumer` ya no es un rol asignable. El rol por defecto al crear es `viewer`.
+- Todas las acciones sobre usuarios quedan en `audit_logs` (`CREATE`, `UPDATE`, `DEACTIVATE`, `REACTIVATE`,
+  `RESEND_ACTIVATION`, `FORCE_PASSWORD_RESET`, `ACTIVATE`, `PASSWORD_RESET`); sin contraseñas ni tokens. Si actuó una API Key, `performed_by.type = api_key`.
+- `POST /admin/auth/register` creaba un 500 con más de un super_admin (`scalar_one_or_none`); ahora responde 409.
+
+**Decisiones tomadas donde la definición no decía (confirmar con Deiby)**
+
+- La migración 016 **no aborta en una base sin super_admins** (una base nueva): el bootstrap crea el primero ya protegido.
+- `ActivationResponse` devuelve `email` (solo al activar) para llevar al login con el email prellenado (RF-046).
+- Desactivar a un usuario **pendiente** no hace nada; reactivar a uno pendiente es 409.
+- Un `tenant_admin` no puede cambiarse su propio rol (el tenant quedaría sin administrador).
+- Los refresh tokens emitidos antes de desplegar no están en el índice de sesiones: un reseteo no los cierra (hasta 7 días). Desactivar sí cierra todo.
 
 ## Cambios Recientes (2026-09-11 — Sedes desde Appits: `/v1/platform/*`)
 

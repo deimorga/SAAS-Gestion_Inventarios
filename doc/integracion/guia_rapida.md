@@ -548,3 +548,5 @@ curl -s -X POST http://localhost:8002/v1/auth/refresh \
 | `429`       | Rate limit         | Demasiadas peticiones en la ventana de tiempo                             | Aplicar backoff exponencial y reintentar tras el período indicado|
 
 Para el catálogo completo de errores y sus códigos internos, consulte [`error_catalog.md`](error_catalog.md).
+
+**Guías relacionadas:** [`gestion_usuarios.md`](gestion_usuarios.md) (equipo del tenant, activación de cuentas y recuperación de contraseña) · [`trazabilidad_lotes_ubicaciones.md`](trazabilidad_lotes_ubicaciones.md) (lotes, proveedores y ubicaciones) · [`plataforma_sedes.md`](plataforma_sedes.md) (sedes).

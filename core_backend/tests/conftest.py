@@ -289,3 +289,102 @@ async def zone_a(db, warehouse_a):
 @pytest_asyncio.fixture
 async def product_a(db, tenant_a):
     return await _create_product_simple(db, tenant_a["id"], f"SKU-{uid()[:8]}")
+
+
+# ── Módulo 09: usuarios, emails y recuperación de contraseña ───────────────
+# Regla de oro (L-4): un test solo borra o modifica lo que creó, por su `id`. Nunca filtra
+# por rol ni toca la cuenta raíz del ambiente.
+
+
+class EmailSpy:
+    """Sustituye a `send_email.delay` y registra cada email que se encolaría."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def delay(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+
+    def of(self, template: str) -> list[dict]:
+        return [c for c in self.calls if c["template"] == template]
+
+    def last_token(self, template: str, url_key: str) -> str:
+        """Token del último email de esa plantilla (sale del enlace `...?token=XYZ`)."""
+        return self.of(template)[-1]["context"][url_key].split("token=")[-1]
+
+
+@pytest.fixture
+def email_spy(monkeypatch):
+    spy = EmailSpy()
+    monkeypatch.setattr("app.tasks.send_email", spy)
+    return spy
+
+
+async def _insert_user(
+    email: str,
+    tenant_id: str,
+    role: str = "viewer",
+    *,
+    is_active: bool = True,
+    must_change_password: bool = False,
+    is_protected: bool = False,
+    full_name: str = "Test User",
+) -> str:
+    """Inserta un usuario con la contraseña `Password123!`. Quien lo llama lo borra por id."""
+    new_id = uid()
+    async with _TestSession() as session:
+        await session.execute(
+            text(
+                "INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, "
+                " is_active, must_change_password, is_protected, created_at) "
+                "VALUES (:id, :tid, :email, :pw, :name, :role, :active, :must, :prot, now())"
+            ),
+            {
+                "id": new_id,
+                "tid": tenant_id,
+                "email": email,
+                "pw": hash_password("Password123!"),
+                "name": full_name,
+                "role": role,
+                "active": is_active,
+                "must": must_change_password,
+                "prot": is_protected,
+            },
+        )
+        await session.commit()
+    return new_id
+
+
+async def _user_row(user_id: str) -> dict | None:
+    async with _TestSession() as session:
+        row = (
+            await session.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
+        ).mappings().first()
+    return dict(row) if row else None
+
+
+async def _audit_rows(entity_id: str, action: str | None = None) -> list[dict]:
+    """Filas de `audit_logs` de una entidad (solo lectura, con el rol owner)."""
+    sql = "SELECT * FROM audit_logs WHERE entity_id = :eid"
+    params: dict = {"eid": entity_id}
+    if action:
+        sql += " AND action = :action"
+        params["action"] = action
+    async with _TestSession() as session:
+        rows = (await session.execute(text(sql + " ORDER BY created_at"), params)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _limpiar_solicitudes_de_reseteo():
+    """Borra los contadores de «olvidé mi contraseña» antes de cada test.
+
+    Igual que los de login: todos los tests comparten IP y Redis, y el límite es de 10 por
+    IP y hora; sin esto la segunda ejecución de la suite encontraría el contador lleno.
+    """
+    r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    claves = [k async for k in r.scan_iter("pwd_forgot:*")]
+    if claves:
+        await r.delete(*claves)
+    await r.aclose()
+    yield

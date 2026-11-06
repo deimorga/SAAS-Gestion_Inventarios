@@ -75,6 +75,19 @@ def _ip_key(ip: str) -> str:
     return f"login_fail:ip:{ip}"
 
 
+async def clear_account_failures(redis: aioredis.Redis, email: str) -> None:
+    """Borra los fallos de login de esa cuenta desde cualquier IP.
+
+    Al completar un reseteo de contraseña el usuario debe poder entrar de inmediato, aunque
+    estuviera bloqueado por intentos fallidos. Los contadores por IP no se tocan: frenan el
+    credential stuffing y no pertenecen a la cuenta.
+    """
+    escaped = "".join(f"\\{c}" if c in "[]*?\\" else c for c in email.strip().lower())
+    claves = [k async for k in redis.scan_iter(f"login_fail:acct:{escaped}:*")]
+    if claves:
+        await redis.delete(*claves)
+
+
 async def _ensure_not_blocked(redis: aioredis.Redis, email: str, ip: str) -> None:
     for key, limit in ((_account_key(email, ip), MAX_FAILURES_PER_ACCOUNT), (_ip_key(ip), MAX_FAILURES_PER_IP)):
         failures = int(await redis.get(key) or 0)

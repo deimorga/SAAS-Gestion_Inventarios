@@ -23,8 +23,8 @@ from app.services.activation import generate_activation_token
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-async def _create_inactive_user(tenant_id: str, email: str) -> str:
-    """Crea usuario inactivo que espera activación."""
+async def _create_inactive_user(tenant_id: str, email: str, role: str = "tenant_admin") -> str:
+    """Crea usuario pendiente de activación (inactivo y con must_change_password)."""
     uid_ = str(uuid.uuid4())
     async with _TestSession() as session:
         await session.execute(
@@ -32,10 +32,10 @@ async def _create_inactive_user(tenant_id: str, email: str) -> str:
                 "INSERT INTO users "
                 "(id, tenant_id, email, password_hash, full_name, role, "
                 " is_active, must_change_password, created_at) "
-                "VALUES (:id, :tid, :email, 'placeholder', 'Test User', 'tenant_admin', "
+                "VALUES (:id, :tid, :email, 'placeholder', 'Test User', :role, "
                 "        false, true, now())"
             ),
-            {"id": uid_, "tid": tenant_id, "email": email},
+            {"id": uid_, "tid": tenant_id, "email": email, "role": role},
         )
         await session.commit()
     return uid_
@@ -141,9 +141,9 @@ async def test_activate_password_too_short(client: AsyncClient, tenant_a):
 
 @pytest.mark.asyncio
 async def test_resend_activation_success(client: AsyncClient, auth_headers_a, tenant_a):
-    """200: tenant_admin puede reenviar activación a un usuario de su tenant."""
+    """200: tenant_admin puede reenviar activación a un usuario pendiente de su tenant."""
     email = f"resend-{uuid.uuid4().hex[:8]}@tenant.com"
-    uid_ = await _create_inactive_user(tenant_a["id"], email)
+    uid_ = await _create_inactive_user(tenant_a["id"], email, role="viewer")
 
     try:
         resp = await client.post(
@@ -243,3 +243,18 @@ async def test_change_password_requires_auth(client: AsyncClient):
         json={"current_password": "Password123!", "new_password": "NewPassword456!"},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_activate_returns_the_email_so_the_portal_can_prefill_login(client: AsyncClient, tenant_a):
+    """RF-046 paso 5: tras activar, el portal lleva a /login con el email prellenado."""
+    email = f"prefill-{uuid.uuid4().hex[:8]}@tenant.com"
+    uid_ = await _create_inactive_user(tenant_a["id"], email, role="viewer")
+    redis_client = await _get_redis_client()
+    token = await generate_activation_token(uid_, redis_client)
+    try:
+        resp = await client.post("/v1/auth/activate", json={"token": token, "password": "ClaveLarga-2026!"})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["email"] == email
+    finally:
+        await _delete_user_by_id(uid_)

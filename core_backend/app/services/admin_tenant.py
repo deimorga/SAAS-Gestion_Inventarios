@@ -85,8 +85,9 @@ async def create_tenant(
             )
         slug = f"{slug}-{uuid4().hex[:8]}"
 
-    result = await db.execute(select(User).where(User.email == request.admin_email))
-    if result.scalar_one_or_none() is not None:
+    admin_email = request.admin_email.strip().lower()
+    result = await db.execute(select(User.id).where(func.lower(User.email) == admin_email).limit(1))
+    if result.first() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="El email de administrador ya está registrado",
@@ -114,7 +115,7 @@ async def create_tenant(
 
     admin_user = User(
         tenant_id=tenant_id,
-        email=request.admin_email,
+        email=admin_email,
         password_hash=hash_password(secrets.token_urlsafe(32)),
         full_name=request.admin_full_name,
         role="tenant_admin",

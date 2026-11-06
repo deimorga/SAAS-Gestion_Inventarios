@@ -248,3 +248,105 @@ async def list_sedes(token: str, tenant_id: str) -> list[dict[str, Any]]:
 async def create_sede(token: str, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     r = await _authed_request("POST", f"/admin/tenants/{tenant_id}/sedes", token, json=payload)
     return r.json()
+
+
+# ── Páginas públicas: activación y recuperación de contraseña ────────────────
+# No llevan token: el enlace del email es la credencial. `client_ip` es la IP del navegador:
+# el API limita las solicitudes de «olvidé mi contraseña» por origen, y sin reenviarla todos
+# los usuarios contarían contra la IP del contenedor del portal.
+
+async def _public_post(path: str, payload: dict[str, Any], client_ip: str = "") -> dict[str, Any]:
+    headers = {"X-Forwarded-For": client_ip} if client_ip else {}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=_TIMEOUT) as c:
+        r = await c.post(path, json=payload, headers=headers)
+        r.raise_for_status()
+        return r.json()
+
+
+async def activate_account(token: str, password: str, client_ip: str = "") -> dict[str, Any]:
+    return await _public_post("/v1/auth/activate", {"token": token, "password": password}, client_ip)
+
+
+async def forgot_password(email: str, client_ip: str = "") -> dict[str, Any]:
+    return await _public_post("/v1/auth/forgot-password", {"email": email}, client_ip)
+
+
+async def reset_password(token: str, new_password: str, client_ip: str = "") -> dict[str, Any]:
+    return await _public_post(
+        "/v1/auth/reset-password", {"token": token, "new_password": new_password}, client_ip
+    )
+
+
+# ── Usuarios de un tenant ────────────────────────────────────────────────────
+# Un super_admin gestiona cualquier tenant por /admin; un tenant_admin solo el suyo por /v1.
+# Mismo contrato en ambas superficies.
+
+def _users_path(role: str, tenant_id: str) -> str:
+    return f"/admin/tenants/{tenant_id}/users" if role == "super_admin" else "/v1/users"
+
+
+async def list_users(
+    token: str,
+    role: str,
+    tenant_id: str,
+    *,
+    page: int = 1,
+    size: int = 20,
+    status: str | None = None,
+    q: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"page": page, "size": size}
+    if status:
+        params["status"] = status
+    if q:
+        params["q"] = q
+    r = await _authed_request("GET", _users_path(role, tenant_id), token, params=params)
+    return r.json()
+
+
+async def create_user(token: str, role: str, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    r = await _authed_request("POST", _users_path(role, tenant_id), token, json=payload)
+    return r.json()
+
+
+async def update_user(
+    token: str, role: str, tenant_id: str, user_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    r = await _authed_request("PATCH", f"{_users_path(role, tenant_id)}/{user_id}", token, json=payload)
+    return r.json()
+
+
+async def force_user_reset(token: str, role: str, tenant_id: str, user_id: str) -> dict[str, Any]:
+    r = await _authed_request("POST", f"{_users_path(role, tenant_id)}/{user_id}/password-reset", token)
+    return r.json()
+
+
+async def resend_user_activation(token: str, role: str, tenant_id: str, user_id: str) -> dict[str, Any]:
+    if role == "super_admin":
+        path = f"/admin/tenants/{tenant_id}/users/{user_id}/resend-activation"
+    else:
+        path = f"/v1/auth/resend-activation/{user_id}"
+    r = await _authed_request("POST", path, token)
+    return r.json()
+
+
+# ── Super admins ─────────────────────────────────────────────────────────────
+
+async def list_super_admins(token: str) -> list[dict[str, Any]]:
+    r = await _authed_request("GET", "/admin/super-admins", token)
+    return r.json()
+
+
+async def create_super_admin(token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    r = await _authed_request("POST", "/admin/super-admins", token, json=payload)
+    return r.json()
+
+
+async def update_super_admin(token: str, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    r = await _authed_request("PATCH", f"/admin/super-admins/{user_id}", token, json=payload)
+    return r.json()
+
+
+async def force_super_admin_reset(token: str, user_id: str) -> dict[str, Any]:
+    r = await _authed_request("POST", f"/admin/super-admins/{user_id}/password-reset", token)
+    return r.json()

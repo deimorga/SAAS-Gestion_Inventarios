@@ -10,7 +10,6 @@ Escenarios:
 import uuid
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text
 
@@ -18,39 +17,29 @@ from app.core.config import settings
 from tests.conftest import _TestSession, _delete_user_by_id
 
 
-# ── Fixture autouse: limpiar super_admins residuales antes de cada test ────
+# ── Protección de la cuenta raíz (L-1, L-4, T-917) ─────────────────────────
+# Antes un fixture autouse borraba TODOS los super_admins de la base antes de cada
+# test y los reinsertaba al final. Si el test se cortaba, o si la suite corría contra
+# staging, la cuenta raíz se perdía (así pasó el 2026-10-26). Ahora ningún test borra
+# ni modifica un super_admin que no creó: cada uno limpia SOLO el id que insertó
+# (el fixture `super_admin_user` y el propio test de bootstrap lo hacen por id).
 
-@pytest_asyncio.fixture(autouse=True)
-async def _clean_residual_super_admins():
-    """Deja la DB sin super_admins durante cada test y los restaura al terminar.
 
-    El bootstrap (`/admin/auth/register`) solo funciona si no existe ningún
-    super_admin, y los tests corren contra la DB de desarrollo compartida. Antes
-    este fixture los borraba sin más y se llevaba por delante la cuenta real con
-    la que se entra al portal local. Ahora los guarda y los vuelve a insertar.
+async def _exigir_sin_super_admins() -> None:
+    """El bootstrap solo funciona si no existe ningún super_admin.
+
+    Si la base ya tiene uno que este test no creó (la cuenta raíz del ambiente), se
+    salta en lugar de borrarlo.
     """
     async with _TestSession() as session:
-        rows = (await session.execute(
-            text("SELECT * FROM users WHERE role = 'super_admin'")
-        )).mappings().all()
-        await session.execute(text("DELETE FROM users WHERE role = 'super_admin'"))
-        await session.commit()
-    yield
-    if not rows:
-        return
-    async with _TestSession() as session:
-        # Los tests crean los suyos con sa-...@micronuba.com; eliminarlos y
-        # devolver los que había, tal cual estaban.
-        await session.execute(text("DELETE FROM users WHERE role = 'super_admin'"))
-        cols = list(rows[0].keys())
-        await session.execute(
-            text(
-                f"INSERT INTO users ({', '.join(cols)}) "
-                f"VALUES ({', '.join(':' + c for c in cols)})"
-            ),
-            [dict(r) for r in rows],
+        existentes = (
+            await session.execute(text("SELECT count(*) FROM users WHERE role = 'super_admin'"))
+        ).scalar_one()
+    if existentes:
+        pytest.skip(
+            "Hay super_admins que este test no creó (la cuenta raíz del ambiente): "
+            "el bootstrap solo se prueba con la base sin ninguno, y no se borra nada ajeno."
         )
-        await session.commit()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,7 +90,8 @@ async def test_admin_register_missing_secret_header(client: AsyncClient, monkeyp
 
 @pytest.mark.asyncio
 async def test_admin_register_success(client: AsyncClient, monkeypatch):
-    """201 con token válido al registrar el primer super_admin."""
+    """201 con token válido al registrar el primer super_admin (solo con la base sin ninguno)."""
+    await _exigir_sin_super_admins()
     monkeypatch.setattr(settings, "ADMIN_BOOTSTRAP_SECRET", "test-bootstrap-secret")
     email = _unique_email()
     created_uid: str | None = None
@@ -265,3 +255,31 @@ async def test_admin_token_is_accepted_on_protected_endpoints(client: AsyncClien
     )
     # super_admin tiene acceso (get_current_auth acepta su JWT)
     assert resp.status_code == 200
+
+
+# ── Guarda de L-4: ningún test borra usuarios por rol ──────────────────────
+
+
+def test_ningun_test_borra_ni_modifica_usuarios_por_rol():
+    """Regresión del 2026-10-26: un fixture borró todos los super_admins de staging.
+
+    Un test solo puede borrar o modificar el usuario que creó, por su `id`. Filtrar
+    por `role` o por `is_protected` toca también cuentas ajenas, la raíz incluida.
+    """
+    import pathlib
+    import re
+
+    # Admite el SQL partido en varias líneas (literales consecutivos).
+    prohibido = re.compile(
+        r"(DELETE\s+FROM\s+users|UPDATE\s+users\s+SET)[\s\S]{0,200}?WHERE\s+(role|is_protected)\b",
+        re.IGNORECASE,
+    )
+    infractores = []
+    for archivo in sorted(pathlib.Path(__file__).parent.glob("test_*.py")):
+        if archivo.name == pathlib.Path(__file__).name:
+            continue  # este archivo contiene el patrón para poder buscarlo
+        texto = archivo.read_text(encoding="utf-8")
+        for m in prohibido.finditer(texto):
+            n = texto.count("\n", 0, m.start()) + 1
+            infractores.append(f"{archivo.name}:{n}")
+    assert not infractores, "Borrado o cambio de usuarios por rol en: " + ", ".join(infractores)

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.activation import ActivationResponse, ChangePasswordResponse
+from app.services.audit import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -74,16 +75,30 @@ async def activate_account(
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+    # Solo se activa a un usuario PENDIENTE. Si lo desactivaron después de enviarle el email,
+    # el enlace no puede reactivarlo; y a uno ya activo no le cambia la contraseña (para eso
+    # existe «olvidé mi contraseña»). Misma respuesta que un token inexistente (RN-046-1).
+    if user is None or user.is_active or not user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Token de activación inválido o expirado",
+        )
 
     user.password_hash = hash_password(new_password)
     user.is_active = True
     user.must_change_password = False
     user.last_login_at = datetime.now(timezone.utc)
-    await db.commit()
+    await log_action(
+        db,
+        tenant_id=user.tenant_id,
+        entity="users",
+        entity_id=user.id,
+        action="ACTIVATE",
+        new_values={},
+        performed_by={"type": "user", "id": user.id, "role": user.role},
+    )
 
-    return ActivationResponse()
+    return ActivationResponse(email=user.email)
 
 
 async def resend_activation(
@@ -102,10 +117,12 @@ async def resend_activation(
     if user is None or user.tenant_id != requesting_tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
-    if user.is_active and not user.must_change_password:
+    # Solo a usuarios pendientes: a uno desactivado el enlace lo reactivaría sin que nadie
+    # lo decidiera (RF-047), y uno activo no lo necesita.
+    if user.is_active or not user.must_change_password:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="La cuenta ya está activada",
+            detail="La cuenta ya está activada" if user.is_active else "La cuenta está desactivada",
         )
 
     token = await generate_activation_token(user.id, redis)

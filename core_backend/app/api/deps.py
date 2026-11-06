@@ -33,6 +33,7 @@ from app.core.security import (
 )
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
+from app.services.sessions import is_revoked
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -134,6 +135,14 @@ async def get_current_auth(
         role = payload["role"]
         user_id = payload["sub"]
         token_scope = payload.get("scope", "full")
+
+        # Revocación inmediata (RF-051): desactivar a un usuario o resetear su contraseña
+        # invalida los access tokens que ya había emitido. Un GET de Redis por request.
+        if await is_revoked(user_id, payload, redis):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesión cerrada. Vuelve a iniciar sesión.",
+            )
 
         tier = await _tenant_tier(tenant_id, redis)
 

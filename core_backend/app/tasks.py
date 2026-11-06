@@ -116,6 +116,25 @@ _TEMPLATES: dict[str, dict[str, str]] = {
             "<p>— Equipo MicroNuba</p>"
         ),
     },
+    "password_reset": {
+        "subject": "Restablece tu contraseña — MicroNuba",
+        "text": (
+            "Hola {full_name},\n\n"
+            "Recibimos una solicitud para restablecer tu contraseña en MicroNuba. "
+            "Usa este enlace (válido {ttl_minutes} minutos, de un solo uso):\n\n"
+            "{reset_url}\n\n"
+            "Si no la solicitaste, ignora este mensaje: tu contraseña no cambiará.\n\n"
+            "— Equipo MicroNuba"
+        ),
+        "html": (
+            "<p>Hola <strong>{full_name}</strong>,</p>"
+            "<p>Recibimos una solicitud para restablecer tu contraseña en MicroNuba. "
+            "Usa este enlace (válido {ttl_minutes} minutos, de un solo uso):</p>"
+            "<p><a href='{reset_url}'>{reset_url}</a></p>"
+            "<p>Si no la solicitaste, ignora este mensaje: tu contraseña no cambiará.</p>"
+            "<p>— Equipo MicroNuba</p>"
+        ),
+    },
     "password_changed": {
         "subject": "Tu contraseña fue cambiada — MicroNuba",
         "text": (

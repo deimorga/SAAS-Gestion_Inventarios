@@ -1,5 +1,5 @@
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_auth_db, get_current_auth, get_db, require_roles
@@ -10,7 +10,9 @@ from app.schemas.activation import (
     ChangePasswordRequest,
     ChangePasswordResponse,
 )
-from app.services.activation import activate_account, change_password, resend_activation
+from app.services.activation import activate_account, change_password
+from app.services.login_throttle import client_ip
+from app.services.user_management import Actor, resend_activation_for
 
 router = APIRouter(prefix="/auth", tags=["Auth — Activación"])
 
@@ -46,23 +48,31 @@ async def activate(
     summary="Reenviar activación",
     description=(
         "Genera un nuevo token de activación para el usuario indicado. "
-        "Solo puede ser invocado por un `tenant_admin` del mismo tenant. "
-        "El token anterior no se invalida — expira naturalmente al cabo de 48h."
+        "Solo puede ser invocado por un `tenant_admin` del mismo tenant y solo aplica a usuarios "
+        "pendientes de activación. El token anterior no se invalida — expira naturalmente al cabo de 48h."
     ),
     responses={
         200: {"description": "Token de activación regenerado"},
         404: {"description": "Usuario no encontrado o no pertenece al tenant"},
-        409: {"description": "La cuenta ya está activada"},
+        403: {"description": "No puedes gestionar a otro tenant_admin"},
+        409: {"description": "La cuenta ya está activada o está desactivada"},
         422: {"description": "Datos de entrada inválidos"},
     },
 )
 async def resend(
     user_id: str,
+    request: Request,
     auth: AuthContext = Depends(require_tenant_admin),
     db: AsyncSession = Depends(get_auth_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    await resend_activation(user_id, auth.tenant_id, db, redis)
+    actor = Actor(
+        user_id=auth.user_id,
+        role="tenant_admin",
+        ip=await client_ip(request),
+        kind="api_key" if auth.auth_type == "api_key" else "user",
+    )
+    await resend_activation_for(user_id, auth.tenant_id, actor, db, redis)
     return ActivationResponse(message="Token de activación regenerado")
 
 

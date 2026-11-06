@@ -4,7 +4,7 @@
 **Prioridad:** P0 (RF-046, RF-051, RF-052) · P1 (RF-047 a RF-050)
 **Sprint:** Sprint 9 — ver [sprint_09.md](../../../Planeacion/Sprints/sprint_09.md)
 **Responsable de desarrollo:** Cristian Anacona
-**Estado:** 📝 Definido — pendiente de desarrollo
+**Estado:** ✅ Implementado en local — pendiente de revisión y despliegue (T-916)
 **Fecha de definición:** 2026-11-05
 **Documento padre:** [DEFINICION_SAAS.md](../00_definicion-solucion_saas/DEFINICION_SAAS.md)
 **Depende de:** Módulo 08 (Admin Multi-tenant) — amplía y corrige RF-038, RF-039 y RF-040
@@ -221,7 +221,7 @@ graph TD
   - RN-049-4: Los super_admins no aparecen en la gestión de usuarios de tenants (RF-047), ni siquiera
     en la del tenant interno.
   - RN-049-5: **Cuenta raíz protegida (L-1).** El super_admin existente en cada ambiente al aplicar
-    la migración 014 queda marcado como protegido (`is_protected=true`). Sobre una cuenta protegida
+    la migración 016 queda marcado como protegido (`is_protected=true`). Sobre una cuenta protegida
     nadie puede: desactivarla, cambiarle el nombre o el rol, ni forzar su reseteo. En la tabla de
     `/super-admins` aparece con la etiqueta "Raíz" y sin acciones. Su dueño sí puede cambiar su propia
     contraseña (RF-040) y usar "olvidé mi contraseña" (RF-050).
@@ -371,9 +371,9 @@ graph TD
 
 | Tabla | Cambio | Motivo |
 |---|---|---|
-| `users` | Índice único sobre `lower(email)` (migración 014) | RN-052-1. El índice actual `(tenant_id, email)` se mantiene |
-| `users` | Normalizar `email` a minúsculas (migración 014) | RN-052-2 |
-| `users` | Columna `is_protected boolean NOT NULL DEFAULT false`; la migración 014 la pone a `true` en el super_admin activo existente | L-1, RN-049-5 |
+| `users` | Índice único sobre `lower(email)` (migración 016) | RN-052-1. El índice actual `(tenant_id, email)` se mantiene |
+| `users` | Normalizar `email` a minúsculas (migración 016) | RN-052-2 |
+| `users` | Columna `is_protected boolean NOT NULL DEFAULT false`; la migración 016 la pone a `true` en el super_admin activo existente | L-1, RN-049-5 |
 
 El estado (pendiente / activo / desactivado) no es una columna: se deriva de `is_active` y `must_change_password`.
 

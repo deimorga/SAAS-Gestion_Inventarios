@@ -99,6 +99,7 @@ async def test_send_email_all_templates():
         "api_key_expired": {"full_name": "U", "key_name": "K", "expires_at": "2026-12-01"},
         "api_key_rotated": {"full_name": "U", "key_name": "K"},
         "tenant_created": {"full_name": "U", "activation_url": "http://x"},
+        "password_reset": {"full_name": "U", "reset_url": "http://x", "ttl_minutes": 60},
     }
     assert set(context_map.keys()) == set(_TEMPLATES.keys()), "Faltan templates en el test"
 

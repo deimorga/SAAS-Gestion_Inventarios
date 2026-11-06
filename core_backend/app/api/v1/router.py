@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
-    auth, auth_activate, api_keys, tenant, audit_logs, products, categories,
+    auth, auth_activate, auth_password, api_keys, tenant, audit_logs, products, categories,
     warehouses, reports, reservations, webhooks, bulk, cycle_counts,
     suppliers, channel_allocations, users, platform,
 )
@@ -13,6 +13,7 @@ router = APIRouter(prefix="/v1")
 
 router.include_router(auth.router)
 router.include_router(auth_activate.router)
+router.include_router(auth_password.router)
 router.include_router(users.router)
 router.include_router(api_keys.router)
 router.include_router(tenant.router)
