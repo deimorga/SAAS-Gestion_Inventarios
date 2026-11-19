@@ -352,3 +352,160 @@ async def test_una_sede_no_puede_tener_sedes(client: AsyncClient, admin_auth_hea
         assert "principal" in nieta.json()["detail"]
     finally:
         await _delete_tenant(sede_id)
+
+
+# ── Plan de las sedes: lo define su tenant principal ───────────────────────
+# El plan fija las peticiones por minuto. Se elige y se cambia en la principal (`tenant_a` es
+# PROFESSIONAL); las sedes lo siguen, así una sede nunca queda con menos plan que su principal.
+
+def _panel_sede_body(**extra) -> dict:
+    suffix = uuid.uuid4().hex[:8]
+    return {
+        "name": f"Sede Plan {suffix}",
+        "admin_email": f"plan-{suffix}@tallerdemo.com",
+        "admin_full_name": "Admin Sede Plan",
+        **extra,
+    }
+
+
+async def _tier_guardado(tenant_id: str) -> str:
+    async with _TestSession() as session:
+        return (
+            await session.execute(text("SELECT subscription_tier FROM tenants WHERE id = :id"), {"id": tenant_id})
+        ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_la_sede_nace_con_el_plan_de_su_principal(client: AsyncClient, admin_auth_headers, tenant_a):
+    """Aunque se intente mandar otro plan, la sede toma el de su principal."""
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes",
+        json=_panel_sede_body(subscription_tier="STARTER"),
+        headers=admin_auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    try:
+        assert await _tier_guardado(sede_id) == "PROFESSIONAL"
+        detalle = await client.get(f"/admin/tenants/{sede_id}", headers=admin_auth_headers)
+        assert detalle.json()["subscription_tier"] == "PROFESSIONAL"
+    finally:
+        await _delete_tenant(sede_id)
+
+
+@pytest.mark.asyncio
+async def test_provisionar_sede_con_padre_toma_el_plan_del_padre(client: AsyncClient, platform_headers, tenant_a):
+    """Appits manda su `subscription_tier` por defecto (STARTER): con padre, manda el plan del padre."""
+    resp = await client.post(
+        "/v1/platform/tenants",
+        json=_sede_payload(parent_tenant_id=tenant_a["id"], subscription_tier="STARTER"),
+        headers=platform_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    try:
+        assert await _tier_guardado(sede_id) == "PROFESSIONAL"
+    finally:
+        await _delete_tenant(sede_id)
+
+
+@pytest.mark.asyncio
+async def test_provisionar_sede_sin_padre_usa_el_plan_pedido(client: AsyncClient, platform_headers):
+    """Sin principal no hay de quién heredar: se respeta el plan que se pida."""
+    resp = await client.post(
+        "/v1/platform/tenants", json=_sede_payload(subscription_tier="ENTERPRISE"), headers=platform_headers
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    try:
+        assert await _tier_guardado(sede_id) == "ENTERPRISE"
+    finally:
+        await _delete_tenant(sede_id)
+
+
+@pytest.mark.asyncio
+async def test_cambiar_el_plan_de_la_principal_cambia_el_de_sus_sedes_al_instante(
+    client: AsyncClient, admin_auth_headers, tenant_a
+):
+    import redis.asyncio as aioredis
+
+    from app.api.deps import _tenant_tier
+    from app.core.config import settings
+    from app.core.security import rpm_for_tier, tenant_tier_key
+
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes", json=_panel_sede_body(), headers=admin_auth_headers
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    try:
+        # Como si ya hubieran hecho peticiones: el plan viejo de ambas está en caché
+        assert await _tenant_tier(tenant_a["id"], r) == "PROFESSIONAL"
+        assert await _tenant_tier(sede_id, r) == "PROFESSIONAL"
+
+        patched = await client.patch(
+            f"/admin/tenants/{tenant_a['id']}", json={"subscription_tier": "ENTERPRISE"}, headers=admin_auth_headers
+        )
+        assert patched.status_code == 200, patched.text
+
+        assert await _tier_guardado(sede_id) == "ENTERPRISE", "la sede sigue a su principal"
+        assert await r.get(tenant_tier_key(tenant_a["id"])) is None
+        assert await r.get(tenant_tier_key(sede_id)) is None, "el caché de la sede también se borra"
+        assert rpm_for_tier(await _tenant_tier(sede_id, r)) == 10_000
+    finally:
+        await r.delete(tenant_tier_key(tenant_a["id"]), tenant_tier_key(sede_id))
+        await r.aclose()
+        await _delete_tenant(sede_id)
+
+
+@pytest.mark.asyncio
+async def test_el_plan_de_una_sede_no_se_cambia_por_separado(client: AsyncClient, admin_auth_headers, tenant_a):
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes", json=_panel_sede_body(), headers=admin_auth_headers
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    try:
+        bad = await client.patch(
+            f"/admin/tenants/{sede_id}", json={"subscription_tier": "STARTER"}, headers=admin_auth_headers
+        )
+        assert bad.status_code == 409
+        assert "principal" in bad.json()["detail"]
+        assert await _tier_guardado(sede_id) == "PROFESSIONAL"
+
+        # Lo demás de la sede sí se edita
+        ok = await client.patch(f"/admin/tenants/{sede_id}", json={"name": "Sede Renombrada"}, headers=admin_auth_headers)
+        assert ok.status_code == 200
+    finally:
+        await _delete_tenant(sede_id)
+
+
+@pytest.mark.asyncio
+async def test_el_limite_de_peticiones_de_una_sede_sigue_a_su_principal_aunque_su_dato_se_desfase(
+    client: AsyncClient, admin_auth_headers, tenant_a
+):
+    """Red de seguridad: si el plan guardado de la sede se desalinea, manda el de la principal."""
+    import redis.asyncio as aioredis
+
+    from app.api.deps import _tenant_tier
+    from app.core.config import settings
+    from app.core.security import tenant_tier_key
+
+    resp = await client.post(
+        f"/admin/tenants/{tenant_a['id']}/sedes", json=_panel_sede_body(), headers=admin_auth_headers
+    )
+    assert resp.status_code == 201, resp.text
+    sede_id = resp.json()["tenant_id"]
+    r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    try:
+        async with _TestSession() as session:
+            await session.execute(text("UPDATE tenants SET subscription_tier = 'STARTER' WHERE id = :id"), {"id": sede_id})
+            await session.commit()
+        await r.delete(tenant_tier_key(sede_id))
+
+        assert await _tenant_tier(sede_id, r) == "PROFESSIONAL"
+    finally:
+        await r.delete(tenant_tier_key(sede_id))
+        await r.aclose()
+        await _delete_tenant(sede_id)

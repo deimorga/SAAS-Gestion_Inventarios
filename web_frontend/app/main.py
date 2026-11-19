@@ -98,6 +98,16 @@ def _row_label(row: dict) -> str:
     return " · ".join(part for part in parts if part)
 
 
+# Plan de cada tenant principal: fija cuántas peticiones por minuto puede hacer al API. Sus sedes
+# usan el mismo plan. Los números son los de TIER_RPM del backend (app/core/security.py).
+_PLAN_OPTIONS = {
+    "STARTER": "Starter — 1.000 peticiones por minuto",
+    "PROFESSIONAL": "Professional — 3.000 peticiones por minuto",
+    "ENTERPRISE": "Enterprise — 10.000 peticiones por minuto",
+}
+_PLAN_NAMES = {"STARTER": "Starter", "PROFESSIONAL": "Professional", "ENTERPRISE": "Enterprise"}
+
+
 # ─── Login ────────────────────────────────────────────────────────────────────
 
 @ui.page("/login")
@@ -573,6 +583,13 @@ async def page_tenant_detail(tenant_id: str) -> None:
                 with ui.row().classes("items-center gap-3"):
                     ui.label(tenant["name"]).classes("mn-h1")
                     theme.tier_pill(tenant["subscription_tier"])
+                    if es_sede:
+                        ui.label("plan de su tenant principal").classes("text-xs mn-muted")
+                    elif app.storage.user.get("role") == "super_admin":
+                        # lambda: la función se define más abajo en la página; así se resuelve al hacer clic
+                        ui.button(icon="edit", on_click=lambda: open_plan_dialog()).props(
+                            'flat round dense size=sm color=grey-7 aria-label="Cambiar plan"'
+                        ).tooltip("Cambiar plan")
                     theme.status_pill(is_active)
                 ui.label(f"Creado el {theme.fmt_date(tenant['created_at'])}").classes("mn-muted")
         with ui.row().classes("items-center gap-2"):
@@ -675,6 +692,10 @@ async def page_tenant_detail(tenant_id: str) -> None:
             sede_admin_in = ui.input("Nombre del admin *", placeholder="Carlos García").classes("w-full mt-2")
             sede_wh_in = ui.input("Nombre de la bodega", placeholder="Bodega Sede Norte").classes("w-full mt-2")
             sede_ext_in = ui.input("ID en Appits (opcional)", placeholder="shop_42").classes("w-full mt-2")
+            ui.label(
+                "La sede usa el plan de este tenant: "
+                f"{_PLAN_OPTIONS.get(tenant['subscription_tier'], tenant['subscription_tier'])}."
+            ).classes("text-xs mn-muted mt-2")
             sede_err = ui.label("").classes("text-red-500 text-sm mt-1")
 
             async def do_create_sede() -> None:
@@ -716,6 +737,45 @@ async def page_tenant_detail(tenant_id: str) -> None:
         sede_err.set_text("")
         sede_dialog.open()
 
+    # ── Cambiar el plan: solo en el tenant principal; sus sedes lo siguen ─────────
+    plan_dialog = ui.dialog().props("persistent")
+    with plan_dialog:
+        with ui.card().classes("w-[460px] p-6"):
+            ui.label(f"Plan de {tenant['name']}").classes("text-xl font-bold mb-1")
+            ui.label(
+                "El plan fija cuántas peticiones por minuto puede hacer este tenant al API. "
+                "El cambio se aplica de inmediato y también a todas sus sedes."
+            ).classes("text-sm mn-muted mb-3")
+            plan_select = ui.select(_PLAN_OPTIONS, label="Plan", value=tenant["subscription_tier"]).classes("w-full")
+            plan_err = ui.label("").classes("text-negative text-sm mt-1")
+
+            async def do_save_plan() -> None:
+                plan_err.set_text("")
+                if plan_select.value == tenant["subscription_tier"]:
+                    plan_dialog.close()
+                    return
+                try:
+                    await api.update_tenant(_token(), tenant_id, {"subscription_tier": plan_select.value})
+                except SessionExpiredError:
+                    return
+                except Exception as ex:
+                    plan_err.set_text(_err_msg(ex))
+                    return
+                plan_dialog.close()
+                ui.notify(
+                    f"Plan cambiado a {_PLAN_NAMES.get(plan_select.value, plan_select.value)}.", type="positive"
+                )
+                ui.navigate.to(f"/tenants/{tenant_id}")  # recarga: el plan también cambió en sus sedes
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=plan_dialog.close).props("flat no-caps")
+                ui.button("Guardar", on_click=do_save_plan).props('unelevated no-caps color="primary"')
+
+    def open_plan_dialog() -> None:
+        plan_select.set_value(tenant["subscription_tier"])
+        plan_err.set_text("")
+        plan_dialog.open()
+
     with ui.card().classes("mn-card w-full"):
         with ui.element("div").classes("mn-card-head"):
             with ui.row().classes("items-center gap-2"):
@@ -753,6 +813,10 @@ async def page_tenant_detail(tenant_id: str) -> None:
                         "Una sede es un tenant aparte con su propio inventario, ligado a este tenant."
                     ).classes("text-sm mn-muted text-center")
                 return
+            ui.label(
+                f"Las sedes usan el plan de este tenant ({_PLAN_NAMES.get(tenant['subscription_tier'], tenant['subscription_tier'])}). "
+                "Se cambia aquí arriba, en el principal."
+            ).classes("text-sm mn-muted w-full px-6 py-3").style("border-top:1px solid var(--mn-line)")
             columns = [
                 {"name": "name", "label": "Nombre", "field": "name", "align": "left"},
                 {"name": "slug", "label": "Slug", "field": "slug", "align": "left"},
@@ -1246,7 +1310,7 @@ _PRODUCT_ROW_SLOT = """
             <template v-if="props.row.locations.length">
                 <div class="mn-loc mn-loc--head">
                     <span>Almacén</span><span>Zona</span><span>Ubicación</span><span>Lote</span><span>Proveedor</span>
-                    <span class="num">Físico</span><span class="num">Reservado</span><span class="num">Disponible</span><span></span>
+                    <span>Vence</span><span class="num">Físico</span><span class="num">Reservado</span><span class="num">Disponible</span><span></span>
                 </div>
                 <div v-for="loc in props.row.locations" :key="loc.id" class="mn-loc">
                     <span>
@@ -1266,11 +1330,20 @@ _PRODUCT_ROW_SLOT = """
                         <span :class="loc.supplier_id ? '' : 'mn-muted'">{{ loc.supplier_name }}</span>
                         <span v-if="loc.supplier_code" class="sub mn-mono">{{ loc.supplier_code }}</span>
                     </span>
+                    <span>
+                        <span :class="loc.expiry_date ? '' : 'mn-muted'">{{ loc.expiry_str }}</span>
+                        <span v-if="loc.is_next" class="sub">sale primero</span>
+                    </span>
                     <span class="num">{{ loc.physical }}</span>
                     <span class="num">{{ loc.reserved }}</span>
                     <span class="avail">{{ loc.available }}</span>
-                    <q-btn flat round dense icon="tune" color="warning" :aria-label="'Ajustar ' + loc.where_label"
-                           @click="$parent.$emit('adjust_loc', loc)" />
+                    <span class="text-no-wrap">
+                        <q-btn v-if="loc.lot_number" flat round dense icon="event" color="grey-7"
+                               :aria-label="'Corregir el vencimiento del lote ' + loc.lot_number"
+                               @click="$parent.$emit('expiry_loc', loc)"><q-tooltip>Corregir vencimiento</q-tooltip></q-btn>
+                        <q-btn flat round dense icon="tune" color="warning" :aria-label="'Ajustar ' + loc.where_label"
+                               @click="$parent.$emit('adjust_loc', loc)" />
+                    </span>
                 </div>
             </template>
             <div v-else class="mn-locs-empty">Sin existencias. Usa «Entrada de stock» para registrar la primera.</div>
@@ -1397,6 +1470,72 @@ async def page_products(tenant_id: str) -> None:
 
     # ── Diálogos de stock (entrada, ajuste, ajuste de una fila) ───────────────
     stock = _StockDialogs(tenant_id, warehouses, zones_by_wh, on_done=lambda: load_products(search_input.value))
+
+    # ── Corregir el vencimiento de un lote (PATCH /admin/tenants/{id}/batches/{bid}) ──
+    expiry_target: dict = {}
+    expiry_dialog = ui.dialog().props("persistent")
+    with expiry_dialog:
+        with ui.card().classes("w-[460px] p-6"):
+            ui.label("Corregir vencimiento").classes("text-xl font-bold mb-1")
+            expiry_lot_label = ui.label("").classes("text-sm mn-muted mb-3")
+            expiry_none = ui.checkbox("Sin vencimiento")
+            expiry_input = ui.input("Fecha de vencimiento").props("type=date stack-label").classes("w-full mt-2")
+            expiry_input.bind_visibility_from(expiry_none, "value", backward=lambda v: not v)
+            ui.label(
+                "Sin vencimiento, el lote deja de salir primero en las reservas y una entrada nueva del "
+                "mismo lote no le devuelve la fecha. Los movimientos ya registrados no cambian."
+            ).classes("text-xs mn-muted mt-2")
+            expiry_err = ui.label("").classes("text-negative text-sm mt-1")
+
+            async def do_save_expiry() -> None:
+                expiry_err.set_text("")
+                new_value = None if expiry_none.value else (expiry_input.value or "").strip()
+                if new_value == "":
+                    expiry_err.set_text("Elige una fecha o marca «Sin vencimiento».")
+                    return
+                try:
+                    batches = await api.list_batches(_token(), tenant_id, expiry_target["product_id"])
+                    batch = next(
+                        (
+                            b for b in batches
+                            if b["batch_number"] == expiry_target["lot_number"]
+                            and str(b.get("supplier_id") or "").lower() == str(expiry_target.get("supplier_id") or "").lower()
+                        ),
+                        None,
+                    )
+                    if batch is None:
+                        expiry_err.set_text(
+                            "Este lote no tiene registro propio (es anterior a que las entradas crearan lotes): "
+                            "no se puede corregir aquí."
+                        )
+                        return
+                    await api.update_batch_expiry(_token(), tenant_id, batch["id"], new_value)
+                except SessionExpiredError:
+                    return
+                except Exception as ex:
+                    expiry_err.set_text(_err_msg(ex))
+                    return
+                expiry_dialog.close()
+                ui.notify(
+                    f"Lote {expiry_target['lot_number']}: "
+                    + ("sin vencimiento." if new_value is None else f"vence el {theme.fmt_date(new_value)}."),
+                    type="positive",
+                )
+                await load_products(search_input.value)
+
+            with ui.row().classes("w-full justify-end mt-4 gap-2"):
+                ui.button("Cancelar", on_click=expiry_dialog.close).props("flat no-caps")
+                ui.button("Guardar", on_click=do_save_expiry).props('unelevated no-caps color="primary"')
+
+    def open_expiry_dialog(loc: dict) -> None:
+        expiry_target.clear()
+        expiry_target.update(loc)
+        expiry_lot_label.set_text(f"{loc.get('product_name', '')} · Lote {loc['lot_number']} · {loc.get('where_label', '')}")
+        current = (loc.get("expiry_date") or "")[:10]
+        expiry_none.set_value(not current)
+        expiry_input.set_value(current)
+        expiry_err.set_text("")
+        expiry_dialog.open()
 
     # ── Barra de acciones ─────────────────────────────────────────────────────
     with ui.row().classes("w-full items-center gap-3"):
@@ -1531,6 +1670,7 @@ async def page_products(tenant_id: str) -> None:
                     tbl.on("edit", on_edit)
                     tbl.on("delete", on_delete)
                     tbl.on("adjust_loc", lambda e: stock.open_row(e.args))
+                    tbl.on("expiry_loc", lambda e: open_expiry_dialog(e.args))
 
     search_input.on("keydown.enter", lambda: load_products(search_input.value))
     search_input.on("clear", lambda: load_products(None))

@@ -39,9 +39,11 @@ _QTY = Decimal("0.0001")
 
 # Vencimiento y fecha de primera entrada de un lote. Salen del registro del lote
 # (batches) y, para lotes anteriores a que las entradas crearan lotes, del ledger.
+# Un lote cuya fecha corrigió una persona (`expiry_overridden`) manda aunque esté vacía: «sin vencimiento».
 _LOT_EXPIRY = (
+    "CASE WHEN bt.expiry_overridden THEN bt.expiry_date ELSE "
     "COALESCE(bt.expiry_date, (SELECT min(l.expiry_date) FROM inventory_ledger l "
-    " WHERE l.tenant_id = sb.tenant_id AND l.product_id = sb.product_id AND l.lot_number = sb.lot_number))"
+    " WHERE l.tenant_id = sb.tenant_id AND l.product_id = sb.product_id AND l.lot_number = sb.lot_number)) END"
 )
 _LOT_FIRST_IN = (
     "COALESCE(bt.created_at, (SELECT min(l.created_at) FROM inventory_ledger l "
@@ -308,9 +310,10 @@ async def _get_items(db: AsyncSession, reservation_id: str) -> list[ReservationI
             text(
                 "SELECT ra.reservation_item_id, ra.lot_number, ra.bin_id, b.code AS bin_code, b.name AS bin_name, "
                 "       ra.supplier_id, ra.quantity, ra.confirmed_qty, "
+                "       CASE WHEN bt.expiry_overridden THEN bt.expiry_date ELSE "
                 "       COALESCE(bt.expiry_date, (SELECT min(l.expiry_date) FROM inventory_ledger l "
                 "                 WHERE l.tenant_id = ra.tenant_id AND l.product_id = ri.product_id "
-                "                   AND l.lot_number = ra.lot_number)) AS expiry_date "
+                "                   AND l.lot_number = ra.lot_number)) END AS expiry_date "
                 "FROM reservation_allocations ra "
                 "JOIN reservation_items ri ON ri.id = ra.reservation_item_id "
                 "LEFT JOIN bins b ON b.id = ra.bin_id "

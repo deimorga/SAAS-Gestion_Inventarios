@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch import Batch
@@ -636,7 +636,16 @@ async def query_stock_balances(
         .scalar_subquery()
     )
     q = (
-        select(StockBalance, Bin.code, Bin.name, func.coalesce(Batch.expiry_date, ledger_expiry))
+        select(
+            StockBalance,
+            Bin.code,
+            Bin.name,
+            # Un lote cuya fecha corrigió una persona manda aunque esté vacía: no vuelve al ledger
+            case(
+                (Batch.expiry_overridden.is_(True), Batch.expiry_date),
+                else_=func.coalesce(Batch.expiry_date, ledger_expiry),
+            ),
+        )
         .outerjoin(Bin, Bin.id == StockBalance.bin_id)
         .outerjoin(
             Batch,

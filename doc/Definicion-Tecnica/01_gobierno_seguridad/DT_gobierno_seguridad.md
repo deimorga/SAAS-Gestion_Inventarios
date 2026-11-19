@@ -540,8 +540,8 @@ X-RateLimit-Reset: 1714001860
 
 | Tier | RPM | Almacén |
 |------|-----|---------|
-| `STARTER` | 60 | Redis INCR + EXPIRE |
-| `PROFESSIONAL` | 1,000 | Redis INCR + EXPIRE |
+| `STARTER` | 1,000 | Redis INCR + EXPIRE |
+| `PROFESSIONAL` | 3,000 | Redis INCR + EXPIRE |
 | `ENTERPRISE` | 10,000 | Redis INCR + EXPIRE |
 
 ---

@@ -229,8 +229,8 @@ a:focus-visible, .q-btn:focus-visible { outline: 2px solid var(--mn-primary); ou
 .mn-locs { border: 1px solid var(--mn-line); border-radius: 12px; background: #FAFBFC; overflow-x: auto; }
 .mn-loc {
   display: grid; align-items: center; gap: 12px; padding: 4px 16px;
-  grid-template-columns: minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,.65fr) minmax(0,.8fr) minmax(0,.85fr) 48px;
-  border-top: 1px solid var(--mn-line); background: #fff; font-size: 14px; min-height: 52px; min-width: 780px;
+  grid-template-columns: minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.65fr) minmax(0,.8fr) minmax(0,.85fr) 88px;
+  border-top: 1px solid var(--mn-line); background: #fff; font-size: 14px; min-height: 52px; min-width: 900px;
 }
 .mn-loc--head {
   border-top: 0; background: #FAFBFC; min-height: 0; padding: 10px 16px;

@@ -16,9 +16,11 @@ PASSWORD_MIN_LENGTH = 12
 REFRESH_TOKEN_PREFIX = "refresh:"
 ACCESS_BLACKLIST_PREFIX = "blacklist:"
 
+# Peticiones por minuto de cada tenant según su plan. El portal repite estos números en
+# `_PLAN_OPTIONS` (web_frontend/app/main.py): si se cambian aquí, cambiarlos allí.
 TIER_RPM: dict[str, int] = {
-    "STARTER": 60,
-    "PROFESSIONAL": 1_000,
+    "STARTER": 1_000,
+    "PROFESSIONAL": 3_000,
     "ENTERPRISE": 10_000,
 }
 

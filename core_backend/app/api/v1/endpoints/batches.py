@@ -1,7 +1,15 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
-from app.schemas.batch import BatchCreate, BatchResponse, SerialNumberBulkCreate, SerialNumberResponse, SerialStatusResponse
+from app.schemas.batch import (
+    BatchCreate,
+    BatchResponse,
+    BatchUpdate,
+    SerialNumberBulkCreate,
+    SerialNumberResponse,
+    SerialStatusResponse,
+)
+from app.services.login_throttle import client_ip
 from app.services import batch as svc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +76,41 @@ async def get_batch(
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await svc.get_batch(batch_id, db, auth.tenant_id)
+
+
+@router.patch(
+    "/batches/{batch_id}",
+    response_model=BatchResponse,
+    summary="Corregir el vencimiento de un lote",
+    description=(
+        "Cambia la fecha de vencimiento de un lote ya registrado (`{\"expiry_date\": \"AAAA-MM-DD\"}`) o la "
+        "quita (`{\"expiry_date\": null}`). Quitarla cuenta como «sin vencimiento» de verdad: las reservas "
+        "dejan de apartarlo primero por esa fecha, los saldos y el reporte de lotes por vencer no la "
+        "muestran, y una entrada posterior del mismo lote no la devuelve. Los movimientos del ledger "
+        "conservan la fecha con la que se registraron. Un producto con `track_expiry=true` no admite "
+        "quitarla (`422`); el cambio queda en la auditoría."
+    ),
+    responses={
+        200: {"description": "Lote corregido"},
+        404: {"description": "Lote no encontrado"},
+        422: {"description": "Falta `expiry_date`, fecha inválida, anterior a la fabricación, o el producto exige vencimiento"},
+        401: {"description": "No autenticado"},
+        403: {"description": "Sin permisos suficientes"},
+    },
+)
+async def update_batch(
+    batch_id: str,
+    body: BatchUpdate,
+    request: Request,
+    auth: AuthContext = Depends(require_inventory_write),
+    db: AsyncSession = Depends(get_auth_db),
+):
+    performed_by = {
+        "type": "api_key" if auth.auth_type == "api_key" else "user",
+        "id": auth.user_id,
+        "role": auth.role,
+    }
+    return await svc.update_batch(batch_id, body, db, auth.tenant_id, performed_by, await client_ip(request))
 
 
 @router.post(

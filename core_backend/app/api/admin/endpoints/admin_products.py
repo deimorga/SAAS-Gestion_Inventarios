@@ -1,15 +1,18 @@
 from typing import AsyncGenerator
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_super_admin, AuthContext
 from app.core.database import AsyncSessionLocal, set_tenant_context
 from app.schemas.catalog import ProductCreate, ProductResponse, ProductUpdate
 from app.schemas.common import PaginatedResponse
+from app.schemas.batch import BatchResponse, BatchUpdate
 from app.schemas.supplier import SupplierResponse
 from app.services import product as product_service
 from app.services import category as category_service
+from app.services import batch as batch_service
 from app.services import supplier as supplier_service
+from app.services.login_throttle import client_ip
 
 router = APIRouter(tags=["Admin — Productos"])
 
@@ -116,6 +119,47 @@ async def admin_list_suppliers(
     async with AsyncSessionLocal() as session:
         await set_tenant_context(session, tenant_id)
         return await supplier_service.list_suppliers(db=session, tenant_id=tenant_id, is_active=None)
+
+
+@router.get(
+    "/tenants/{tenant_id}/batches",
+    response_model=list[BatchResponse],
+    summary="Listar lotes de un tenant",
+    description="Lotes registrados del tenant, filtrables por producto. El portal los usa para corregir vencimientos.",
+)
+async def admin_list_batches(
+    tenant_id: str,
+    product_id: str | None = Query(None, description="Filtrar por UUID de producto"),
+    _auth: AuthContext = Depends(require_super_admin),
+):
+    async with AsyncSessionLocal() as session:
+        await set_tenant_context(session, tenant_id)
+        return await batch_service.list_batches(session, tenant_id, product_id)
+
+
+@router.patch(
+    "/tenants/{tenant_id}/batches/{batch_id}",
+    response_model=BatchResponse,
+    summary="Corregir el vencimiento de un lote de un tenant",
+    description=(
+        "Mismo comportamiento que `PATCH /v1/batches/{id}`: cambia la fecha o la quita (`null`), y quitarla "
+        "cuenta como «sin vencimiento» de verdad. Opera con el RLS del tenant: un lote de otro tenant da 404."
+    ),
+    responses={404: {"description": "Lote no encontrado en este tenant"}, 422: {"description": "Validación"}},
+)
+async def admin_update_batch(
+    tenant_id: str,
+    batch_id: str,
+    body: BatchUpdate,
+    request: Request,
+    auth: AuthContext = Depends(require_super_admin),
+):
+    performed_by = {"type": "user", "id": auth.user_id, "role": "super_admin"}
+    async with AsyncSessionLocal() as session:
+        await set_tenant_context(session, tenant_id)
+        return await batch_service.update_batch(
+            batch_id, body, session, tenant_id, performed_by, await client_ip(request)
+        )
 
 
 @router.get(

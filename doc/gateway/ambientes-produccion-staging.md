@@ -367,7 +367,7 @@ Traefik gestiona los certificados automáticamente con Let's Encrypt (HTTP-01, r
 | Rol de la app sin superuser ni BYPASSRLS | ✅ `assert_rls_enforced` aborta el arranque si no |
 | `ADMIN_BOOTSTRAP_SECRET` vacío post-bootstrap | ⚠️ Sin verificar en producción |
 | Swagger deshabilitado en prod | ✅ `ENABLE_SWAGGER=false` |
-| Rate limit por tenant según su plan | ✅ STARTER 60 / PROFESSIONAL 1.000 / ENTERPRISE 10.000 req/min |
+| Rate limit por tenant según su plan | ✅ STARTER 1.000 / PROFESSIONAL 3.000 / ENTERPRISE 10.000 req/min |
 | Límite de intentos de login | ✅ 5 fallos por cuenta + IP y 20 por IP → 429 durante 15 min |
 | `X-Forwarded-For` solo de proxies de confianza | ✅ `TRUSTED_PROXY_HOSTS`: Traefik (172.22.0.254) y el portal del ambiente |
 | UI de Mailpit (staging) con usuario y contraseña | ✅ Responde 401 sin credenciales |

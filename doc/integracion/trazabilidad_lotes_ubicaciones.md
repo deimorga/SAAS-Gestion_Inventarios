@@ -190,6 +190,25 @@ reserva (la orden de Appits) y su `transaction_id`.
 **Entrada y respuesta nuevas:** `supplier_id` (opcional). El número es único por
 producto + proveedor: `409` solo si el **mismo** proveedor repite el número.
 
+### Corregir el vencimiento — `PATCH /v1/batches/{id}`
+
+Para un lote ya registrado con una fecha equivocada (p. ej. se cargó la fecha de ingreso como
+vencimiento). Requiere el mismo permiso que crear lotes.
+
+```json
+{ "expiry_date": "2027-03-31" }   // cambiarla
+{ "expiry_date": null }           // quitarla: el lote pasa a «sin vencimiento»
+```
+
+- **Quitarla cuenta como «sin vencimiento» de verdad:** las reservas ya no apartan ese lote primero
+  por la fecha (va detrás de los que sí vencen), los saldos y el reporte de lotes por vencer no la
+  muestran, y una entrada posterior del mismo lote **no** la devuelve.
+- Los movimientos del ledger **conservan** la fecha con la que se registraron (el ledger es inmutable).
+- Responde el lote (`200`). `422` si falta `expiry_date` (un cuerpo vacío no es «quitar»), si la fecha
+  no es válida, si es anterior a la fabricación, o si el producto tiene `track_expiry = true` y se
+  intenta quitar. `404` si el lote no existe o es de otro tenant.
+- El cambio queda en la auditoría (`entity = batches`, valor anterior y nuevo).
+
 ---
 
 ## Cambios de comportamiento que Appits debe conocer

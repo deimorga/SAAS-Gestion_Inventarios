@@ -13,7 +13,8 @@ import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import MICRONUBA_TENANT_ID
@@ -72,9 +73,16 @@ async def _tenant_tier(tenant_id: str, redis: aioredis.Redis) -> str:
     if cached:
         return cached
 
-    # `tenants` no está bajo RLS: no hace falta contexto de tenant
+    # `tenants` no está bajo RLS: no hace falta contexto de tenant. Una sede usa el plan de su
+    # principal: aunque su dato guardado se desalinee, el límite sigue al del principal.
+    parent = aliased(Tenant)
     async with AsyncSessionLocal() as session:
-        tier = await session.scalar(select(Tenant.subscription_tier).where(Tenant.id == tenant_id))
+        tier = await session.scalar(
+            select(func.coalesce(parent.subscription_tier, Tenant.subscription_tier))
+            .select_from(Tenant)
+            .outerjoin(parent, Tenant.parent_tenant_id == parent.id)
+            .where(Tenant.id == tenant_id)
+        )
     tier = tier or "STARTER"
     await redis.set(key, tier, ex=TIER_CACHE_TTL_SECONDS)
     return tier

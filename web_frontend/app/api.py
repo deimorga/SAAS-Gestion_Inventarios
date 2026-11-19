@@ -187,6 +187,20 @@ async def list_suppliers(token: str, tenant_id: str) -> list[dict[str, Any]]:
     return r.json()
 
 
+async def list_batches(token: str, tenant_id: str, product_id: str | None = None) -> list[dict[str, Any]]:
+    params = {"product_id": product_id} if product_id else None
+    r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/batches", token, params=params)
+    return r.json()
+
+
+async def update_batch_expiry(token: str, tenant_id: str, batch_id: str, expiry_date: str | None) -> dict[str, Any]:
+    """`expiry_date` en formato AAAA-MM-DD, o None para dejar el lote «sin vencimiento»."""
+    r = await _authed_request(
+        "PATCH", f"/admin/tenants/{tenant_id}/batches/{batch_id}", token, json={"expiry_date": expiry_date}
+    )
+    return r.json()
+
+
 async def list_categories(token: str, tenant_id: str) -> list[dict[str, Any]]:
     r = await _authed_request("GET", f"/admin/tenants/{tenant_id}/categories", token)
     return r.json()

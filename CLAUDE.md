@@ -43,7 +43,7 @@ core_backend/                   # FastAPI backend
 │       ├── security.py       # JWT, API key, password hashing
 │       ├── redis_client.py   # Redis connection pool
 │       └── exceptions.py     # Custom exception handlers
-├── alembic/                  # Database migrations (16 revisions)
+├── alembic/                  # Database migrations (18 revisions)
 ├── tests/                    # 23+ test modules (RLS isolation, auth, etc.)
 ├── scripts/                  # Utilities (export_openapi.py)
 ├── requirements.txt          # Python dependencies
@@ -162,7 +162,7 @@ uvicorn app.main:app --reload
 
 **Roles**: `super_admin`, `tenant_admin`, `inventory_manager`, `viewer`
 
-**Rate Limiting**: Per-tenant based on subscription tier (STARTER: 60 rpm, PROFESSIONAL: 1k rpm, ENTERPRISE: 10k rpm)
+**Rate Limiting**: Per-tenant based on subscription tier (STARTER: 1k rpm, PROFESSIONAL: 3k rpm, ENTERPRISE: 10k rpm)
 
 **Key Files**:
 - `app/api/deps.py` — Role guards (`require_admin`, `require_catalog_write`)
@@ -304,7 +304,7 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 
 ### Alembic Migrations
 
-16 revisions in `core_backend/alembic/versions/`:
+18 revisions in `core_backend/alembic/versions/`:
 1. **001** — Initial schema
 2. **002** — Catalog enhancements
 3. **003** — Inventory (transactions, ledgers, reservations)
@@ -321,6 +321,8 @@ Hay tests que fijan esta invariante contra los `docker-compose*.yml`.
 14. **014** — `tenants.external_provider/external_id/parent_tenant_id/tax_id` — sedes aprovisionadas desde Appits
 15. **015** — bin y proveedor en saldos/ledger/lotes, `reservation_allocations`, consecutivo de entradas (`document_sequences`)
 16. **016** — `users.is_protected` (cuenta raíz) y email único en toda la plataforma (índice sobre `lower(email)`)
+17. **017** — solo datos: alinea el plan de las sedes existentes con el de su tenant principal
+18. **018** — `batches.expiry_overridden`: el vencimiento corregido a mano manda aunque esté vacío
 
 **Migration Commands**:
 ```bash
@@ -354,7 +356,7 @@ Critical settings in `.env`:
 
 ### Test Modules
 
-All tests in `core_backend/tests/` (32 módulos, 455 tests):
+All tests in `core_backend/tests/` (32 módulos, 462 tests):
 - `test_auth.py`, `test_admin_auth.py`, `test_activation.py` — Auth & admin
 - `test_inventory.py`, `test_reservations.py`, `test_cycle_counts.py` — Inventory
 - `test_products.py`, `test_categories.py`, `test_suppliers.py` — Catalog
@@ -451,7 +453,7 @@ Tests are async-aware (`pytest-asyncio`). Database uses transaction rollback for
 
 **Un script por SSH se corta a media ejecución**
 - `docker exec -i` hereda el stdin del heredoc y se come el resto del script. Añadir `</dev/null`.
-- El tenant interno es STARTER (60 rpm): encadenar llamadas admin sin pausa da 429 y luego una
+- El tenant interno es STARTER (1.000 rpm; antes 60, y entonces encadenar llamadas admin sin pausa daba 429): si aun así se pasa, da 429 y luego una
   cascada de variables vacías que parece un fallo de autenticación. Meter `sleep 2` entre pasos.
 
 ### Useful SQL Queries
@@ -544,7 +546,7 @@ def send_email(self, recipient: str, subject: str, html: str) -> None:
 
 - **Secrets**: Never commit `.env`. Use `ADMIN_BOOTSTRAP_SECRET` for one-time setup, then clear.
 - **CORS**: Frontend on different port (8081); see docker-compose.dev.yml for middleware.
-- **Rate Limiting**: Per-tenant tier-based (STARTER: 60 rpm).
+- **Rate Limiting**: Per-tenant tier-based (STARTER: 1.000 rpm).
 - **Email**: Resend SDK requires valid key for production; dev uses test key.
 - **Audit Logging**: All admin actions logged to `audit_logs` table with full RLS isolation.
 
@@ -742,6 +744,13 @@ Guía completa con request/response: `doc/integracion/plataforma_sedes.md`.
   columna `Sedes` que cuenta las que tiene cada uno; las sedes se ven entrando al padre.
 - **Un solo nivel**: una sede no puede tener sedes (`create_tenant` → 409 si el padre ya tiene
   `parent_tenant_id`); el portal no muestra el botón en el detalle de una sede.
+- **El plan de una sede lo define su principal** (2026-11-11). `subscription_tier` fija las peticiones por minuto
+  (STARTER 1.000 · PROFESSIONAL 3.000 · ENTERPRISE 10.000) y cada sede es un tenant con su propio contador. La sede nace
+  con el plan de su principal; cambiar el de la principal arrastra a sus sedes (en la misma transacción) y borra el
+  caché `tenant_tier:<id>` de todas; cambiar el de una sede por separado → 409. `_tenant_tier` (deps.py) toma el plan
+  de la principal aunque el dato guardado de la sede se desalinee. En el portal el plan se cambia en el detalle del
+  tenant principal (lápiz junto al plan) o en Tenants → Editar. Sin principal (sede sin `parent_tenant_id`) se
+  respeta el plan que se pida. La 017 alinea las sedes existentes: al desplegar, su límite pasa al de su principal.
 - **Credencial**: API key del tenant interno con scope **`PLATFORM`** (`require_platform` en
   `deps.py`). Ese scope no está en `_API_KEY_SCOPE_ROLES` a propósito: aprovisiona tenants pero
   no lee ni escribe datos de ninguno. `create_api_key` rechaza emitirlo fuera del tenant interno.
@@ -779,6 +788,11 @@ cada lote y en qué orden de servicio se usó. Contrato completo con ejemplos re
   proveedor del tenant, lote obligatorio, consecutivo `next_document_number`).
 - **Consecutivo de entradas** `E-000058` por tenant (`transactions.document_number` +
   `document_sequences`, UPSERT que bloquea hasta el commit). La 015 numera las entradas históricas.
+- **Corregir el vencimiento de un lote** (2026-11-18): `PATCH /v1/batches/{id}` con `{"expiry_date": "AAAA-MM-DD"}` o
+  `null` para quitarlo. Marca `batches.expiry_overridden` (migración 018): una fecha corregida manda aunque
+  esté vacía, así que **no** vuelve al atajo del ledger (`_LOT_EXPIRY` y el detalle en `reservation.py`, el
+  saldo en `inventory.py`) ni la rellena una entrada posterior (`ensure_batch`). Quien lea el vencimiento de un
+  lote debe respetar esa marca. `track_expiry = true` no admite quitarlo (422). Se audita.
 - **Filtros nuevos**: saldos por `lot_number`/`bin_id`/`supplier_id`; ledger por
   `lot_number`/`zone_id`/`bin_id`/`supplier_id`/`reference_id`/`document_number`/`date_from`/`date_to`.
 

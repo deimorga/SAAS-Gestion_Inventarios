@@ -111,7 +111,8 @@ async def ensure_batch(
         )
         db.add(batch)
         await db.flush()
-    elif batch.expiry_date is None and expiry_date is not None:
+    elif batch.expiry_date is None and expiry_date is not None and not batch.expiry_overridden:
+        # Una fecha quitada a propósito (PATCH /v1/batches/{id}) no se vuelve a rellenar
         batch.expiry_date = expiry_date
     return batch
 

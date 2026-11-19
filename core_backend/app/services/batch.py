@@ -7,10 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch import Batch, SerialNumber
 from app.models.product import Product
+from app.services.audit import log_action
 from app.services.traceability import eq_or_null, get_supplier_of_tenant, opt_str
 from app.schemas.batch import (
     BatchCreate,
     BatchResponse,
+    BatchUpdate,
     SerialNumberBulkCreate,
     SerialNumberResponse,
     SerialStatusResponse,
@@ -89,6 +91,75 @@ async def get_batch(batch_id: str, db: AsyncSession, tenant_id: str) -> BatchRes
     batch = result.scalar_one_or_none()
     if batch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado")
+    return BatchResponse.model_validate(batch)
+
+
+async def update_batch(
+    batch_id: str,
+    body: BatchUpdate,
+    db: AsyncSession,
+    tenant_id: str,
+    performed_by: dict,
+    ip_address: str | None,
+) -> BatchResponse:
+    """Cambia o quita el vencimiento de un lote.
+
+    Quitarlo cuenta como «sin vencimiento» de verdad: el lote queda marcado (`expiry_overridden`) para
+    que ni el ledger ni una entrada posterior de ese lote le devuelvan una fecha. El ledger no se toca.
+    """
+    if "expiry_date" not in body.model_fields_set:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Indica expiry_date: una fecha (AAAA-MM-DD) o null para quitarla",
+        )
+
+    result = await db.execute(
+        select(Batch).where(Batch.id == batch_id, Batch.tenant_id == tenant_id).with_for_update()
+    )
+    batch = result.scalar_one_or_none()
+    if batch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado")
+
+    new_expiry = body.expiry_date
+    if new_expiry is None:
+        product = (await db.execute(select(Product).where(Product.id == batch.product_id))).scalar_one()
+        if product.track_expiry:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "El producto exige fecha de vencimiento (track_expiry=true): no se puede quitar. "
+                    "Corrige la fecha en su lugar."
+                ),
+            )
+    elif batch.manufactured_date is not None and new_expiry < batch.manufactured_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El vencimiento no puede ser anterior a la fecha de fabricación del lote",
+        )
+
+    old_values = {
+        "expiry_date": batch.expiry_date.isoformat() if batch.expiry_date else None,
+        "expiry_overridden": batch.expiry_overridden,
+    }
+    new_values = {"expiry_date": new_expiry.isoformat() if new_expiry else None, "expiry_overridden": True}
+    if old_values == new_values:
+        return BatchResponse.model_validate(batch)  # ya estaba así: sin cambios ni auditoría
+
+    batch.expiry_date = new_expiry
+    batch.expiry_overridden = True
+    # `log_action` confirma el cambio junto con su registro de auditoría
+    await log_action(
+        db,
+        tenant_id=tenant_id,
+        entity="batches",
+        entity_id=batch.id,
+        action="UPDATE",
+        old_values=old_values,
+        new_values=new_values,
+        performed_by=performed_by,
+        ip_address=ip_address,
+    )
+    await db.refresh(batch)
     return BatchResponse.model_validate(batch)
 
 

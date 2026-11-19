@@ -21,6 +21,20 @@ class BatchCreate(BaseModel):
     notes: str | None = None
 
 
+class BatchUpdate(BaseModel):
+    """Corrección de un lote ya registrado. Por ahora solo su vencimiento."""
+
+    model_config = {"extra": "forbid"}
+
+    expiry_date: date | None = Field(
+        None,
+        description=(
+            "Nueva fecha de vencimiento (`AAAA-MM-DD`), o `null` para quitarla: el lote pasa a «sin "
+            "vencimiento». Hay que enviar el campo; un cuerpo vacío es un error, no «quitar»."
+        ),
+    )
+
+
 class BatchResponse(BaseModel):
     id: UUID
     tenant_id: UUID

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,11 @@ class Batch(Base):
     supplier_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("suppliers.id"), nullable=True)
     manufactured_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # `true` = la fecha del lote la corrigió una persona (PATCH /v1/batches/{id}): manda aunque esté
+    # vacía. No se rellena desde el ledger (lotes anteriores) ni desde nuevas entradas.
+    expiry_overridden: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     initial_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

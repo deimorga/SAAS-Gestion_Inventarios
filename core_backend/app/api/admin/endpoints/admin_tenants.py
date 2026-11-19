@@ -116,8 +116,12 @@ async def patch_tenant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     tenant = await update_tenant(tenant_id, body, db)
-    # El rate limit cachea el tier: sin esto el cambio tardaría el TTL en aplicarse
+    # El rate limit cachea el tier: sin esto el cambio tardaría el TTL en aplicarse. Las sedes siguen
+    # el plan de su principal, así que su caché también se borra.
     await redis.delete(tenant_tier_key(tenant_id))
+    if body.subscription_tier is not None:
+        for sede in await platform_service.list_children(tenant_id):
+            await redis.delete(tenant_tier_key(str(sede.id)))
     return tenant
 
 

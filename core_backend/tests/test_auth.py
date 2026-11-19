@@ -107,11 +107,22 @@ async def test_rate_limit_usa_el_tier_del_tenant(client: AsyncClient, auth_heade
     """El límite sale del tier del tenant (PROFESSIONAL), no del STARTER por defecto.
 
     Antes el tier solo se leía de una clave Redis que nada escribía: todos los
-    tenants, ENTERPRISE incluidos, quedaban a 60 rpm.
+    tenants, ENTERPRISE incluidos, quedaban limitados como STARTER.
     """
     resp = await client.get("/v1/audit-logs", headers=auth_headers_a)
     assert resp.status_code == 200
-    assert resp.headers["X-RateLimit-Limit"] == "1000"
+    assert resp.headers["X-RateLimit-Limit"] == "3000"
+
+
+def test_limite_de_peticiones_por_minuto_de_cada_plan():
+    """STARTER 1.000 · PROFESSIONAL 3.000 · ENTERPRISE 10.000; un plan desconocido cuenta como STARTER."""
+    from app.core.security import rpm_for_tier
+
+    assert rpm_for_tier("STARTER") == 1_000
+    assert rpm_for_tier("PROFESSIONAL") == 3_000
+    assert rpm_for_tier("ENTERPRISE") == 10_000
+    assert rpm_for_tier("enterprise") == 10_000, "el plan no distingue mayúsculas"
+    assert rpm_for_tier("GRATIS") == rpm_for_tier("STARTER")
 
 
 @pytest.mark.asyncio

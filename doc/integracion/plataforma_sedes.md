@@ -73,12 +73,18 @@ Content-Type: application/json
 | `external_id` | string | ✅ | Id de la sede en Appits (`shop_id`). Único por proveedor. |
 | `external_provider` | string | | Default `"appits"` |
 | `parent_tenant_id` | uuid | | Tenant de Inventarios del taller principal. Solo referencia; debe existir (si no, `404`). |
-| `subscription_tier` | string | | `STARTER` (default) · `PROFESSIONAL` · `ENTERPRISE` |
+| `subscription_tier` | string | | `STARTER` (default) · `PROFESSIONAL` · `ENTERPRISE`. **Se ignora si mandas `parent_tenant_id`:** una sede toma el plan de su tenant principal (ver nota abajo) |
 | `warehouse.code` | string | | Default `"PRINCIPAL"`. Letras, dígitos, `-`, `_` |
 | `warehouse.name` | string | | Default `"Bodega Principal"` |
 | `warehouse.location_address` | string | | Dirección de la sede |
 | `api_key_name` | string | | Default `"Appits"` |
 | `api_key_scopes` | string[] | | Default: todos los de operación. **Nunca** `ADMIN` ni `PLATFORM` (→ `422`). |
+
+> **Plan de la sede.** El plan (`subscription_tier`) fija cuántas peticiones por minuto puede hacer un tenant al API:
+> `STARTER` 1.000 · `PROFESSIONAL` 3.000 · `ENTERPRISE` 10.000. Cada sede es un tenant aparte y cuenta sus propias peticiones.
+> **Una sede usa el plan de su tenant principal**: con `parent_tenant_id`, el `subscription_tier` que envíes se ignora y la sede
+> nace con el del principal. Cuando el plan del principal cambia, el de sus sedes cambia con él y se aplica de inmediato.
+> El plan de una sede no se cambia por separado (`409`). Sin `parent_tenant_id` no hay de quién heredar y se respeta el que envíes.
 
 **Ejemplo real**
 

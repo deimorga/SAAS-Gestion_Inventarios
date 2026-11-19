@@ -58,7 +58,14 @@ class PlatformTenantCreate(BaseModel):
         None,
         description="Tenant de Inventarios del taller principal del que depende la sede. Solo referencia.",
     )
-    subscription_tier: str = Field("STARTER", pattern=r"^(STARTER|PROFESSIONAL|ENTERPRISE)$")
+    subscription_tier: str = Field(
+        "STARTER",
+        pattern=r"^(STARTER|PROFESSIONAL|ENTERPRISE)$",
+        description=(
+            "Plan del tenant (peticiones por minuto: 1.000, 3.000 o 10.000). Se ignora si trae "
+            "`parent_tenant_id`: una sede toma el plan de su tenant principal."
+        ),
+    )
 
     warehouse: PlatformWarehouseSpec = Field(default_factory=PlatformWarehouseSpec)
     api_key_name: str = Field("Appits", min_length=3, max_length=100)

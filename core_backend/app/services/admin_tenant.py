@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -60,6 +60,7 @@ async def create_tenant(
                     f"(tenant_id={existing.id})"
                 ),
             )
+    parent: Tenant | None = None
     if request.parent_tenant_id:
         parent = (
             await db.execute(select(Tenant).where(Tenant.id == str(request.parent_tenant_id)))
@@ -101,7 +102,9 @@ async def create_tenant(
         id=tenant_id,
         name=request.name,
         slug=slug,
-        subscription_tier=request.subscription_tier,
+        # El plan lo define el tenant principal: una sede nace con el suyo y lo sigue. Sin principal
+        # no hay de quién heredar y se respeta el que se pida.
+        subscription_tier=parent.subscription_tier if parent else request.subscription_tier,
         config={},
         is_active=True,
         tax_id=request.tax_id,
@@ -202,8 +205,21 @@ async def update_tenant(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
 
     updates = request.model_dump(exclude_none=True)
+    if "subscription_tier" in updates and tenant.parent_tenant_id is not None:
+        # `tenants` no está bajo RLS. Si la principal ya no existe, la sede queda libre de cambiar el suyo.
+        if await db.get(Tenant, str(tenant.parent_tenant_id)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El plan de una sede lo define su tenant principal: cámbialo en el principal",
+            )
     for field, value in updates.items():
         setattr(tenant, field if field != "subscription_tier" else "subscription_tier", value)
+
+    if "subscription_tier" in updates:
+        # Las sedes siguen el plan de su principal: se actualizan en la misma transacción
+        await db.execute(
+            update(Tenant).where(Tenant.parent_tenant_id == tenant.id).values(subscription_tier=updates["subscription_tier"])
+        )
 
     tenant.updated_at = datetime.now(timezone.utc)
     await db.commit()
