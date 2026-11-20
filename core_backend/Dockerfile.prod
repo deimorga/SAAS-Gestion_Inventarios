@@ -16,6 +16,8 @@ RUN apt-get update \
 COPY requirements.txt .
 
 # Solo deps de producción; se excluyen pytest, ruff, mypy, httpx de test.
+# kombu va fijada: celery solo exige kombu<6, y kombu 5.7.0 importa `packaging` sin
+# declararlo. Una build del 2026-11-19 cogió la 5.7.0 y el worker y el beat no arrancaban.
 RUN pip install --no-cache-dir --prefix=/install \
     fastapi==0.110.0 \
     "uvicorn[standard]==0.29.0" \
@@ -29,6 +31,7 @@ RUN pip install --no-cache-dir --prefix=/install \
     "bcrypt==4.0.1" \
     "redis==5.0.3" \
     "celery==5.3.6" \
+    "kombu==5.6.2" \
     python-multipart==0.0.9 \
     "resend==2.4.0" \
     "aiofiles>=23.0" \
