@@ -678,6 +678,9 @@ de crear uno sin llamar al API a mano.
 
 ## Módulo 09 — Gestión de Usuarios (Sprint 9): implementado (2026-11-06)
 
+> ⚠️ **Revisión de código pendiente de corregir** (2026-11-19): `doc/Planeacion/Revisiones/revision_2026-11-19_sprints_9_10.md`.
+> Hallazgos R-01 a R-10, asignados a Cristian. Los 🔴 bloquean el paso a producción. Sprints 9 y 10 están en staging.
+
 Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno** (T-916 pendiente). Antes de tocar
 usuarios, autenticación o contraseñas, leer `doc/Planeacion/Sprints/sprint_09.md`,
 `doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md` (RF-046 a RF-052) y
@@ -716,7 +719,7 @@ Guía para quien integra: `doc/integracion/gestion_usuarios.md`.
   `RESEND_ACTIVATION`, `FORCE_PASSWORD_RESET`, `ACTIVATE`, `PASSWORD_RESET`); sin contraseñas ni tokens. Si actuó una API Key, `performed_by.type = api_key`.
 - `POST /admin/auth/register` creaba un 500 con más de un super_admin (`scalar_one_or_none`); ahora responde 409.
 
-**Decisiones tomadas donde la definición no decía (confirmar con Deiby)**
+**Decisiones tomadas donde la definición no decía** — confirmadas por Deiby el 2026-11-19, igual que los límites nuevos por plan (STARTER 1.000 · PROFESSIONAL 3.000 · ENTERPRISE 10.000)
 
 - La migración 016 **no aborta en una base sin super_admins** (una base nueva): el bootstrap crea el primero ya protegido.
 - `ActivationResponse` devuelve `email` (solo al activar) para llevar al login con el email prellenado (RF-046).

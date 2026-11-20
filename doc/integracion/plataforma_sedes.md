@@ -125,8 +125,8 @@ Content-Type: application/json
   },
   "api_key": {
     "id": "80731f3b-43e1-4960-9ef8-02e8af067b24",
-    "key_id": "mk_live_yiIE5tLb96giTa0t8Lk8NCsS",
-    "key_secret": "mk_secret_bAAXUWtBihChplKsJ-JN9uI_yHkQnsfPcQDAaJ-GzE4F1eXQ",
+    "key_id": "mk_live_<KEY_ID>",
+    "key_secret": "mk_secret_<SECRETO — se muestra una sola vez>",
     "scopes": ["READ_CATALOG", "WRITE_CATALOG", "READ_INVENTORY", "WRITE_INVENTORY", "MANAGE_WAREHOUSES", "MANAGE_RESERVATIONS"],
     "expires_at": null
   }
