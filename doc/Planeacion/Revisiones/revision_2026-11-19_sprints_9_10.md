@@ -99,7 +99,7 @@
 
 ### R-06 — Alcance de la key de plataforma
 
-> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
 > **Cambio:** opción mínima de la revisión. `_get_platform_tenant` (`services/platform.py`) excluye
 > `external_provider = 'panel'`, así que `GET`/`DELETE /v1/platform/tenants/{id}` responden 404 a una
 > sede del panel; `GET …/by-external/panel/{id}` también da 404; y `POST /v1/platform/tenants` rechaza
@@ -120,7 +120,7 @@
 
 ### R-07 — Aprovisionamiento a medias
 
-> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
 > **Cambio:** `provision_tenant` es todo o nada. Tras crear tenant y admin, el resto (almacén, key,
 > auditoría) va en `_complete_provisioning`; si falla, `_undo_provisioning` borra el tenant recién
 > creado por id (todas las FK hacia `tenants` son `ON DELETE CASCADE`: se va su admin, almacén, zonas y
@@ -145,7 +145,7 @@
 
 ### R-08 — 500 en altas simultáneas
 
-> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
 > **Cambio:** `create_tenant` (`services/admin_tenant.py`) captura `IntegrityError` en el commit, hace
 > rollback y responde 409 con el motivo según el índice (`uq_tenants_external_ref`, `idx_tenants_slug`,
 > `uq_users_email_lower`). Si choca el `external_id`, el `detail` es el mismo que el de un reintento,
