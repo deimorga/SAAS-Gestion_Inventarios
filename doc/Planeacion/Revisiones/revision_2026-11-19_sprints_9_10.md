@@ -168,3 +168,36 @@
 - Cada hallazgo con su test, que debe fallar sin la corrección.
 - Con Claude: "Lee `doc/Planeacion/Revisiones/revision_2026-11-19_sprints_9_10.md` y corrige R-0x. Primero
   escribe el test que reproduce el escenario."
+
+---
+
+## Hallazgos adicionales (revisión independiente de las correcciones)
+
+No estaban en esta revisión: los encontró una segunda revisión de las ramas de corrección. Son anteriores a
+los Sprints 9 y 10.
+
+### A-1 — Una reserva se podía liberar o despachar dos veces
+
+> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` (sobre `fix/R-01-02-reservas`) · commit: _pendiente_
+> **Qué pasaba:** confirmar, cancelar y expirar leían el estado de la reserva sin bloquear la fila. Prod corre
+> 4 workers, cada uno con su bucle de expiración: dos podían expirar la misma reserva, o una cancelación por
+> API cruzarse con la expiración, y liberarla dos veces (`available_qty` inflado, posible sobreventa). Una
+> confirmación podía despachar una reserva que otro proceso acababa de cancelar.
+> **Cambio:** `_get_reservation_or_404(..., lock=True)` lee con `FOR UPDATE`; confirmar y cancelar la usan, y
+> `expire_reservation` bloquea la reserva, vuelve a comprobar que siga ACTIVE y devuelve si la expiró (el
+> bucle solo cuenta las que sí).
+> **Tests:** `tests/test_concurrencia_bucles.py::test_cancelar_una_reserva_que_otro_proceso_esta_cerrando_no_la_libera_dos_veces`,
+> `…::test_confirmar_una_reserva_que_otro_proceso_esta_cerrando_no_despacha`,
+> `…::test_expirar_una_reserva_que_otro_proceso_esta_cerrando_no_la_libera_dos_veces`.
+
+### A-2 — Webhooks reenviados duplicados y errores tragados
+
+> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` · commit: _pendiente_
+> **Qué pasaba:** el despacho (`main.py`) usaba una sola sesión para todos los tenants, con commit al final y
+> `except Exception: pass`. Un error tardío deshacía el estado de entregas ya enviadas por HTTP y el siguiente
+> ciclo las reenviaba; los 4 workers, además, podían enviar la misma entrega a la vez.
+> **Cambio:** la lógica pasa a `dispatch_pending_webhooks()` (`services/webhook.py`): cada entrega en su
+> propia transacción, reclamada con `FOR UPDATE SKIP LOCKED`; un error se registra con `logger.exception` y se
+> sigue. `main.py` solo llama a la función y registra un fallo general. La entrega sigue siendo «al menos una
+> vez»: si el commit falla después del POST, se reintenta.
+> **Test:** `tests/test_concurrencia_bucles.py::test_un_fallo_en_una_entrega_no_hace_reenviar_las_que_ya_salieron`.

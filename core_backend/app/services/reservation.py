@@ -319,12 +319,14 @@ async def create_reservation(db: AsyncSession, tenant_id: str, body: Reservation
 
 # ── Leer ──────────────────────────────────────────────────────────────────────
 
-async def _get_reservation_or_404(db: AsyncSession, tenant_id: str, reservation_id: str):
+async def _get_reservation_or_404(db: AsyncSession, tenant_id: str, reservation_id: str, *, lock: bool = False):
+    """`lock=True` bloquea la fila hasta el commit: quien cambie el estado de la reserva (confirmar,
+    cancelar, expirar) la lee así, para que dos procesos a la vez no la liberen ni despachen dos veces."""
     row = (
         await db.execute(
             text(
                 "SELECT id, tenant_id, reference_type, reference_id, status, expires_at, created_at, updated_at "
-                "FROM reservations WHERE id = :id AND tenant_id = :tid"
+                "FROM reservations WHERE id = :id AND tenant_id = :tid" + (" FOR UPDATE" if lock else "")
             ),
             {"id": reservation_id, "tid": tenant_id},
         )
@@ -429,7 +431,7 @@ async def list_reservations(db: AsyncSession, tenant_id: str, status: str | None
 async def confirm_reservation(
     db: AsyncSession, tenant_id: str, reservation_id: str, body: ReservationConfirm
 ) -> ReservationResponse:
-    row = await _get_reservation_or_404(db, tenant_id, reservation_id)
+    row = await _get_reservation_or_404(db, tenant_id, reservation_id, lock=True)
     if row.status != "ACTIVE":
         raise HTTPException(status_code=409, detail=f"La reserva está en estado '{row.status}', no se puede confirmar")
 
@@ -530,7 +532,7 @@ async def confirm_reservation(
 # ── Cancelar / expirar ────────────────────────────────────────────────────────
 
 async def cancel_reservation(db: AsyncSession, tenant_id: str, reservation_id: str) -> ReservationResponse:
-    row = await _get_reservation_or_404(db, tenant_id, reservation_id)
+    row = await _get_reservation_or_404(db, tenant_id, reservation_id, lock=True)
     if row.status != "ACTIVE":
         raise HTTPException(status_code=409, detail=f"La reserva está en estado '{row.status}', no se puede cancelar")
 
@@ -577,19 +579,28 @@ async def expire_due_reservations(tenant_ids: list[str] | None = None) -> int:
             async with AsyncSessionLocal() as session:
                 await set_tenant_context(session, tid)
                 try:
-                    await expire_reservation(session, tid, rid)
+                    if await expire_reservation(session, tid, rid):
+                        expired += 1
                     await session.commit()
-                    expired += 1
                 except Exception:
                     await session.rollback()
                     logger.exception("No se pudo expirar la reserva %s del tenant %s; sigue con las demás", rid, tid)
     return expired
 
 
-async def expire_reservation(db: AsyncSession, tenant_id: str, reservation_id: str) -> None:
-    """Libera una reserva vencida. No hace commit: lo hace quien llama (`expire_due_reservations`)."""
+async def expire_reservation(db: AsyncSession, tenant_id: str, reservation_id: str) -> bool:
+    """Libera una reserva vencida. No hace commit: lo hace quien llama (`expire_due_reservations`).
+
+    Bloquea la reserva y vuelve a comprobar que siga ACTIVE: entre listar las vencidas y llegar aquí
+    otro worker (prod corre varios, cada uno con su bucle) o una petición pudo cerrarla. Devuelve si
+    la expiró.
+    """
+    row = await _get_reservation_or_404(db, tenant_id, reservation_id, lock=True)
+    if row.status != "ACTIVE":
+        return False
     await _release(db, tenant_id, reservation_id)
     await db.execute(
         text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
         {"id": reservation_id},
     )
+    return True
