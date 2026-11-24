@@ -392,8 +392,11 @@ cd /root/inventory-saas-staging
 docker compose -f docker-compose.staging.yml run --rm --no-deps \
   -v /root/inventory-saas-staging/core_backend:/src -w /src \
   -e PYTHONPATH=/src -e APP_ENV=test \
-  api sh -c "pip install -q pytest pytest-asyncio pytest-cov && python -m pytest -q"
+  api sh -c "pip install -q pytest==8.2.0 pytest-asyncio==0.23.6 pytest-cov==5.0.0 && python -m pytest -q" </dev/null
 ```
+
+Las versiones van **fijadas** (las de `requirements.txt`): con `pytest-asyncio` 1.x, que ya no tiene el fixture
+`event_loop` de `conftest.py`, casi toda la suite falla con `Task ... attached to a different loop`.
 
 `PYTHONPATH=/src` es obligatorio o se importa el `app/` horneado en la imagen.
 `APP_ENV=test` evita que el guard de RLS aborte. Tarda ~5 minutos.
