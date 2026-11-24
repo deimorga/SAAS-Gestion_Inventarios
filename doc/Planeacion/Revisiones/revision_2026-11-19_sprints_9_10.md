@@ -42,6 +42,17 @@
 
 ### R-01 — La expiración de reservas se bloquea entera
 
+> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: _pendiente_
+> **Cambio:** el bucle pasa a `expire_due_reservations()` (`services/reservation.py`). Cada reserva se
+> expira en su propia sesión y transacción; si una falla, se hace rollback solo de ella, se registra con
+> `logger.exception` (id de reserva y tenant) y se sigue con las demás. `main.py` ya no usa
+> `except Exception: pass`: registra el fallo general. La función acepta `tenant_ids` para que los tests
+> solo toquen sus datos.
+> **Tests:** `tests/test_review_reservas.py::test_r01_una_reserva_que_falla_no_detiene_la_expiracion_de_las_demas`,
+> `…::test_r01_un_tenant_que_falla_al_prepararse_no_detiene_a_los_demas`.
+> Tras una revisión independiente, el aislamiento también cubre el paso previo por tenant (fijar su contexto y
+> listar sus reservas vencidas): un fallo ahí se registra y se sigue con el siguiente tenant.
+
 - **Qué pasa:** el bucle llama a `expire_reservation` → `_release`, que puede lanzar `409` ("reserved_qty
   no puede ser negativo") o `404`. Una sola sesión cubre a todos los tenants, solo hace commit al final,
   y el error se traga con `except Exception: pass`: todo se deshace y la misma reserva vuelve a fallar
@@ -54,6 +65,23 @@
 - **Test:** dos reservas vencidas, una que falla al liberar → la otra sí expira y queda un log.
 
 ### R-02 — Reservas anteriores a la 015
+
+> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: _pendiente_
+> **Cambio:** `_item_allocations` (rama sin asignaciones) solo considera filas con `reserved_qty > 0`,
+> la que más tiene primero, y si una no alcanza reparte la cantidad entre varias. Si entre todas no
+> suman lo reservado, `409` con el motivo («Saldo reservado insuficiente…») en vez de dejar
+> `reserved_qty` negativo. Vale para cancelar, confirmar y expirar.
+> **Tests:** `tests/test_review_reservas.py::test_r02_cancelar_una_reserva_antigua_libera_el_saldo_que_de_verdad_la_tiene`,
+> `…::test_r02_confirmar_una_reserva_antigua_despacha_del_saldo_reservado`,
+> `…::test_r02_una_reserva_antigua_vencida_expira`,
+> `…::test_r02_lo_reservado_repartido_en_varias_filas_se_libera_de_todas`,
+> `…::test_r02_si_no_alcanza_lo_reservado_responde_409_con_motivo`,
+> `…::test_r02_una_reserva_antigua_no_se_lleva_lo_apartado_por_una_nueva`.
+> Tras una revisión independiente: `reserved_qty` de una fila suma **todas** las reservas, también las nuevas
+> (con asignaciones). El reparto de la antigua descuenta de cada fila lo que explican las asignaciones de
+> reservas ACTIVE y solo reparte el remanente; si no, con una reserva antigua y una nueva en la misma zona
+> liberaba la fila de la nueva, dejaba la suya apartada para siempre y bloqueaba la cancelación de la nueva.
+> **Sigue pendiente antes de prod:** contar en producción las reservas ACTIVE creadas antes de la 015.
 
 - **Qué pasa:** el fallback de `_item_allocations` elige un saldo con
   `ORDER BY (bin_id IS NOT NULL), (lot_number IS NOT NULL), reserved_qty DESC`, y prefiere una fila sin
