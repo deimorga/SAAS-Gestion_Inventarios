@@ -128,6 +128,19 @@
 
 ### R-10 — Enlace de reseteo en desarrollo
 
+> **Estado: ✅ Corregido** · rama `fix/R-10-reset-url` · commit: `cd3d62e`
+> **Cambio:** el valor por defecto de `ACTIVATION_BASE_URL` pasa del API (`http://api.inventarios.local:8090`)
+> al portal de desarrollo (`http://localhost:8081`, el puerto de `docker-compose.dev.yml`) en
+> `core/config.py`, `.env.example`, `CLAUDE.md` y `DT_admin_multitenant.md`. Se eligió cambiar el valor por
+> defecto y no separar un `PORTAL_BASE_URL`: el activo y el de reseteo ya apuntan los dos al portal, así que
+> una segunda variable solo duplicaría la configuración. Staging y prod no cambian: sus compose ya definen
+> `ACTIVATION_BASE_URL` con la URL del portal.
+> **Ojo local:** un `.env` ya creado conserva el valor viejo; hay que actualizarlo a mano.
+> **Tests:** `tests/test_review_enlaces.py::test_r10_el_valor_por_defecto_es_el_portal_no_el_api`,
+> `…::test_r10_los_enlaces_de_activacion_y_de_reseteo_apuntan_al_portal`
+> (más `…::test_r10_el_ambiente_sigue_mandando_si_define_su_propia_url`, que protege que cada ambiente
+> siga pudiendo fijar la suya).
+
 - `reset_url` usa `ACTIVATION_BASE_URL`, cuyo valor por defecto (`config.py`, `.env.example`) es el API.
   Cambiar el valor por defecto al portal (`http://localhost:8081`) o separar `PORTAL_BASE_URL`.
 

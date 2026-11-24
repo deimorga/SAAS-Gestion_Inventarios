@@ -577,7 +577,7 @@ USING (
 | `RESEND_API_KEY` | `re_test_placeholder` | API key de Resend |
 | `RESEND_FROM_EMAIL` | `onboarding@resend.dev` | Email remitente |
 | `RESEND_FROM_NAME` | `MicroNuba` | Nombre remitente |
-| `ACTIVATION_BASE_URL` | `http://api.inventarios.local:8090` | Base URL para enlaces de activación |
+| `ACTIVATION_BASE_URL` | `http://localhost:8081` | URL base del portal para los enlaces de los emails (activación y recuperación de contraseña) |
 | `ACTIVATION_TOKEN_TTL_HOURS` | `48` | TTL del token en Redis |
 | `API_KEY_EXPIRY_DAYS` | `365` | Vida útil de una API Key nueva |
 | `API_KEY_ROTATION_GRACE_DAYS` | `30` | Días de gracia al rotar (sistema) |

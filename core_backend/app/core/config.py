@@ -45,9 +45,10 @@ class Settings(BaseSettings):
     RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
     RESEND_FROM_NAME: str = "MicroNuba"
 
-    # URL base para enlaces de activación de usuario en emails
-    # En prod: https://portal.micronuba.com  |  En dev: http://api.inventarios.local:8090
-    ACTIVATION_BASE_URL: str = "http://api.inventarios.local:8090"
+    # URL base del PORTAL para los enlaces de los emails (/activate y /reset-password los sirve el
+    # portal, no el API). En dev: http://localhost:8081 (docker-compose.dev.yml). En staging y prod
+    # la define cada ambiente (docker-compose.staging.yml / .prod.yml).
+    ACTIVATION_BASE_URL: str = "http://localhost:8081"
 
     # TTL del token de activación de usuario (horas)
     ACTIVATION_TOKEN_TTL_HOURS: int = 48
