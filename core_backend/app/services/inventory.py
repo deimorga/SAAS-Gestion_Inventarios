@@ -177,6 +177,16 @@ async def _apply_balance_change(
                 detail=f"Stock insuficiente: disponible {balance.available_qty}, solicitado {abs(qty_delta)}",
             )
         new_available = new_physical - balance.reserved_qty
+        # R-09: una salida nunca consume lo reservado (sirve a salidas, traslados y reempaques). Solo
+        # frena los descuentos: una entrada sobre un saldo que un ajuste dejó bajo lo reservado sí pasa.
+        if not allow_negative and qty_delta < 0 and new_available < 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Stock insuficiente: disponible {balance.available_qty} "
+                    f"(hay {balance.reserved_qty} reservado), solicitado {abs(qty_delta)}"
+                ),
+            )
 
         rows = await db.execute(
             text(
@@ -382,6 +392,7 @@ async def process_issue(
 
     # Validate all items have enough stock before touching anything
     prepared = []
+    pedido_por_saldo: dict[str, Decimal] = {}  # R-09: lo ya pedido de cada saldo por los ítems anteriores
     for item in body.items:
         product = await _get_active_product(db, str(item.product_id), tenant_id)
         await get_bin_in_zone(db, item.bin_id, body.zone_id, tenant_id)
@@ -390,11 +401,15 @@ async def process_issue(
             db, tenant_id, product, str(body.zone_id), item.lot_number, item.bin_id, item.supplier_id,
         )
         available = balance.available_qty if balance else Decimal("0")
+        if balance is not None:
+            available -= pedido_por_saldo.get(str(balance.id), Decimal("0"))
         if available < item.quantity:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Stock insuficiente para producto {item.product_id}: disponible {available}, solicitado {item.quantity}",
             )
+        if balance is not None:
+            pedido_por_saldo[str(balance.id)] = pedido_por_saldo.get(str(balance.id), Decimal("0")) + item.quantity
         prepared.append((item, product, balance))
 
     tx = _make_transaction(
@@ -436,20 +451,25 @@ async def process_transfer(
 
     # Pre-validate stock on source
     prepared = []
+    pedido_por_saldo: dict[str, Decimal] = {}  # R-09: lo ya pedido de cada saldo por los ítems anteriores
     for item in body.items:
         product = await _get_active_product(db, str(item.product_id), tenant_id)
-        require_lot(product, item.lot_number)
         await get_bin_in_zone(db, item.from_bin_id, body.source_zone_id, tenant_id)
         await get_bin_in_zone(db, item.to_bin_id, body.target_zone_id, tenant_id)
         await get_supplier_of_tenant(db, item.supplier_id, tenant_id)
         src_balance = await _find_existing_balance(
             db, tenant_id, product, str(body.source_zone_id), item.lot_number, item.from_bin_id, item.supplier_id,
         )
-        if src_balance is None or src_balance.available_qty < item.quantity:
+        if src_balance is None:
+            # R-05: el lote solo se exige si no hay un saldo existente (histórico, sin lote) que mover
+            require_lot(product, item.lot_number)
+        ya_pedido = pedido_por_saldo.get(str(src_balance.id), Decimal("0")) if src_balance is not None else Decimal("0")
+        if src_balance is None or src_balance.available_qty - ya_pedido < item.quantity:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Stock insuficiente en origen para producto {item.product_id}",
             )
+        pedido_por_saldo[str(src_balance.id)] = ya_pedido + item.quantity
         prepared.append((item, product, src_balance))
 
     tx = _make_transaction(
@@ -502,9 +522,15 @@ async def process_adjustment(
     prepared = []
     for item in body.items:
         product = await _get_active_product(db, str(item.product_id), tenant_id)
-        require_lot(product, item.lot_number)
         await get_bin_in_zone(db, item.bin_id, body.zone_id, tenant_id)
         await get_supplier_of_tenant(db, item.supplier_id, tenant_id)
+        existente = await _find_existing_balance(
+            db, tenant_id, product, str(body.zone_id), item.lot_number, item.bin_id, item.supplier_id,
+        )
+        if existente is None:
+            # R-05: corregir un saldo que ya existe (p. ej. histórico, sin lote) no exige lote; crear
+            # uno nuevo sí, como en las entradas.
+            require_lot(product, item.lot_number)
         prepared.append((item, product))
 
     tx = _make_transaction(

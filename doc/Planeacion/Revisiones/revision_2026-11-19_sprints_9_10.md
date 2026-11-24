@@ -154,6 +154,17 @@
 
 ### R-05 — Stock histórico sin lote
 
+> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: `21cd13f`
+> **Cambio:** `process_adjustment` y `process_transfer` (`services/inventory.py`) buscan primero el saldo
+> existente y solo exigen `lot_number` (`require_lot`) cuando no hay saldo que corregir o mover. Un saldo
+> histórico sin lote de un producto con `track_lots=true` se puede poner en 0, ajustar y trasladar (el
+> traslado lo deja sin lote en el destino, igual que en el origen). Un saldo **nuevo** sin lote sigue
+> rechazándose con 422, como en las entradas.
+> **Tests:** `tests/test_review_inventario.py::test_r05_poner_en_cero_un_saldo_historico_sin_lote`,
+> `…::test_r05_trasladar_un_saldo_historico_sin_lote`,
+> `…::test_r05_sin_lote_y_sin_saldo_existente_sigue_exigiendo_lote`,
+> `…::test_r05_con_lote_indicado_el_ajuste_funciona_como_siempre`.
+
 - **Qué pasa:** `require_lot` en `process_adjustment` (y `process_transfer`, línea 441) devuelve 422 si
   el ítem no trae `lot_number`, aunque el propio código de reservas asume que existen saldos históricos
   sin lote.
@@ -227,6 +238,19 @@
 - Capturar `IntegrityError` en el commit de `create_tenant` y devolver 409, como ya hace `create_user`.
 
 ### R-09 — Salida que consume stock reservado (anterior)
+
+> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: `21cd13f`
+> **Cambio:** dos capas. (1) `process_issue` y `process_transfer` suman lo ya pedido de cada saldo por los
+> ítems anteriores antes de validar contra `available_qty`, y responden 409 antes de tocar nada.
+> (2) `_apply_balance_change` rechaza con 409 cualquier descuento que deje `available_qty < 0`, así que
+> también protege al reempaque (que tenía el mismo patrón) y a cualquier llamador futuro. La red de
+> seguridad solo frena los **descuentos**: una entrada sobre un saldo que un ajuste dejó por debajo de lo
+> reservado sigue pasando, y los ajustes (`allow_negative=True`) no cambian.
+> **Tests:** `tests/test_review_inventario.py::test_r09_dos_items_del_mismo_saldo_no_consumen_lo_reservado`,
+> `…::test_r09_lo_justo_para_el_disponible_si_se_despacha`,
+> `…::test_r09_items_de_saldos_distintos_no_se_suman_entre_si`,
+> `…::test_r09_dos_items_del_mismo_saldo_en_un_traslado_tampoco_consumen_lo_reservado`,
+> `…::test_r09_un_reempaque_tampoco_consume_lo_reservado`.
 
 - `process_issue` valida cada ítem contra `available_qty` por separado, sin restar los anteriores del
   mismo saldo, y `_apply_balance_change` solo impide stock físico negativo.
