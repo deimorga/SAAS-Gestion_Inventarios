@@ -6,11 +6,12 @@ solo crea, consulta y da de baja los tenants que ella misma aprovisionó.
 """
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import AuthContext, require_platform
 from app.core.redis_client import get_redis
 from app.schemas.platform import (
+    PANEL_PROVIDER,
     PlatformTenantCreate,
     PlatformTenantCreated,
     PlatformTenantDeactivated,
@@ -44,7 +45,9 @@ router = APIRouter(prefix="/platform", tags=["Platform"])
         403: {"description": "La credencial no es una API key de plataforma"},
         404: {"description": "`parent_tenant_id` no existe"},
         409: {"description": "`external_id` ya aprovisionado, o `admin_email` ya registrado"},
-        422: {"description": "Datos inválidos (p. ej. scopes ADMIN/PLATFORM en la key de la sede)"},
+        422: {"description": "Datos inválidos (p. ej. scopes ADMIN/PLATFORM en la key de la sede, o "
+                             "`external_provider='panel'`, reservado a las sedes creadas en el panel)"},
+        500: {"description": "Falló un paso del aprovisionamiento; no queda nada creado y se puede reintentar"},
     },
 )
 async def create_platform_tenant(
@@ -52,6 +55,12 @@ async def create_platform_tenant(
     auth: AuthContext = Depends(require_platform),
     redis: aioredis.Redis = Depends(get_redis),
 ):
+    # R-06: `panel` es el proveedor de las sedes creadas a mano; la plataforma no puede usarlo.
+    if body.external_provider == PANEL_PROVIDER:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"external_provider '{PANEL_PROVIDER}' está reservado a las sedes creadas en el panel",
+        )
     return await platform_service.provision_tenant(
         body, performed_by=platform_service.platform_key_performer(auth.user_id), redis=redis
     )

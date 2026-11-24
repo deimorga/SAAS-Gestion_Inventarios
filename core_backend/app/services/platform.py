@@ -10,17 +10,20 @@ de administración; todo lo que toca datos del tenant nuevo (API key, almacén,
 auditoría) va con el contexto RLS de ese tenant.
 """
 
+import logging
+
 import redis.asyncio as aioredis
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal, set_system_context, set_tenant_context
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
-from app.schemas.admin_tenant import TenantCreate
+from app.schemas.admin_tenant import TenantCreate, TenantCreateResponse
 from app.schemas.api_key import ApiKeyCreate
 from app.schemas.platform import (
+    PANEL_PROVIDER,
     PlatformApiKey,
     PlatformTenantCreate,
     PlatformTenantCreated,
@@ -30,9 +33,11 @@ from app.schemas.platform import (
     PlatformZone,
 )
 from app.services import warehouse as wh_service
-from app.services.admin_tenant import create_tenant
+from app.services.admin_tenant import create_tenant, notify_tenant_admin
 from app.services.api_key import create_api_key
 from app.services.audit import log_action
+
+logger = logging.getLogger(__name__)
 
 
 def platform_key_performer(platform_key_id: str) -> dict:
@@ -55,9 +60,17 @@ async def _warehouse_with_zones(session: AsyncSession, tenant_id: str, wh) -> Pl
 
 async def _get_platform_tenant(session: AsyncSession, tenant_id: str) -> Tenant:
     """Solo tenants aprovisionados por una plataforma. Los creados a mano en el
-    panel no existen para `/v1/platform/*`: 404, no 403, para no revelarlos."""
+    panel no existen para `/v1/platform/*`: 404, no 403, para no revelarlos.
+
+    R-06: las sedes creadas desde el panel también llevan proveedor (`panel`), así que no basta
+    con `external_provider IS NOT NULL`.
+    """
     result = await session.execute(
-        select(Tenant).where(Tenant.id == tenant_id, Tenant.external_provider.is_not(None))
+        select(Tenant).where(
+            Tenant.id == tenant_id,
+            Tenant.external_provider.is_not(None),
+            Tenant.external_provider != PANEL_PROVIDER,
+        )
     )
     tenant = result.scalar_one_or_none()
     if tenant is None:
@@ -93,16 +106,69 @@ async def provision_tenant(
             warehouse_code=body.warehouse.code,
             warehouse_name=body.warehouse.name,
             warehouse_address=body.warehouse.location_address,
+            notify_admin=False,  # el enlace se manda cuando la sede está completa
         )
 
     tenant_id = str(created.id)
 
-    # Sin almacén la sede no puede recibir stock: no vale devolver un tenant a medias.
-    if created.warehouse_id is None:
+    # R-07: todo o nada. Si falla un paso posterior al alta del tenant, se borra lo creado en esta
+    # llamada para que el reintento con el mismo external_id funcione en vez de dar 409 sin key.
+    try:
+        result = await _complete_provisioning(body, created, performed_by)
+    except HTTPException:
+        await _undo_provisioning(tenant_id)  # un rechazo con su propio código: se deshace igual
+        raise
+    except Exception as exc:
+        logger.exception("Aprovisionamiento de %s:%s fallido; se deshace", body.external_provider, body.external_id)
+        if not await _undo_provisioning(tenant_id):
+            # No se puede prometer «no se creó nada»: el reintento daría 409 sobre una sede sin key
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "No se pudo aprovisionar la sede y tampoco deshacer lo creado "
+                    f"(tenant_id={tenant_id}); avisar a soporte de MicroNuba"
+                ),
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Tenant {tenant_id} creado pero sin almacén inicial; revisar logs",
-        )
+            detail="No se pudo aprovisionar la sede y no se creó nada; se puede reintentar",
+        ) from exc
+
+    # La sede ya está completa y la key solo se devuelve ahora: un fallo del aviso (Redis, Celery) se
+    # registra pero no la tumba. El admin puede pedir el reenvío de la activación desde el panel.
+    try:
+        await notify_tenant_admin(str(created.admin_user_id), created.admin_email, body.admin_full_name, redis)
+    except Exception:
+        logger.exception("No se pudo enviar el enlace de activación del admin del tenant %s", tenant_id)
+    return result
+
+
+async def _undo_provisioning(tenant_id: str) -> bool:
+    """Borra un tenant recién creado y todo lo suyo (las FK hacia `tenants` son ON DELETE CASCADE).
+
+    Solo se llama con el id que acaba de crear esta misma llamada, antes de devolverlo a nadie.
+    Devuelve si pudo: si no, quien llama no debe decirle al cliente que no se creó nada.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            await set_system_context(session)
+            await session.execute(delete(Tenant).where(Tenant.id == tenant_id))
+            await session.commit()
+        return True
+    except Exception:
+        logger.exception("No se pudo deshacer el tenant %s a medias; revisarlo a mano", tenant_id)
+        return False
+
+
+async def _complete_provisioning(
+    body: PlatformTenantCreate, created: TenantCreateResponse, performed_by: dict
+) -> PlatformTenantCreated:
+    """Almacén, API key y auditoría de una sede cuyo tenant y admin ya están creados."""
+    tenant_id = str(created.id)
+
+    # Sin almacén la sede no puede recibir stock: no vale devolver un tenant a medias.
+    if created.warehouse_id is None:
+        raise RuntimeError(f"Tenant {tenant_id} sin almacén inicial")
 
     async with AsyncSessionLocal() as session:
         await set_tenant_context(session, tenant_id)
@@ -179,6 +245,8 @@ async def get_tenant_info(tenant_id: str) -> PlatformTenantInfo:
 
 
 async def get_tenant_by_external(provider: str, external_id: str) -> PlatformTenantInfo:
+    if provider == PANEL_PROVIDER:  # R-06: las sedes del panel no existen para la plataforma
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant no encontrado")
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Tenant).where(

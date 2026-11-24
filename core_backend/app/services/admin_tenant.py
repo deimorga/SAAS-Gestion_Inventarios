@@ -6,6 +6,7 @@ from uuid import uuid4
 import redis.asyncio as aioredis
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -22,6 +23,41 @@ from app.schemas.admin_tenant import (
 )
 
 
+# R-08: si dos altas llegan a la vez, las comprobaciones previas no ven a la otra y es el índice
+# único el que decide. Se responde 409 con el mismo motivo que daría la comprobación previa.
+_CONFLICTOS_ALTA = {
+    "uq_tenants_external_ref": "Ya existe un tenant con ese external_provider/external_id",
+    "idx_tenants_slug": "El slug ya está en uso",
+    "uq_users_email_lower": "El email de administrador ya está registrado",
+    "idx_users_email_tenant": "El email de administrador ya está registrado",
+}
+
+
+def _detalle_conflicto(exc: IntegrityError, *, auto_slug: bool = False) -> str:
+    mensaje = str(exc.orig)
+    if auto_slug and "idx_tenants_slug" in mensaje:
+        # El slug lo calculó el sistema, no el cliente: no es «tu slug está en uso» sino una carrera
+        return "Otra alta con el mismo nombre se estaba registrando al mismo tiempo; reintenta"
+    for constraint, detalle in _CONFLICTOS_ALTA.items():
+        if constraint in mensaje:
+            return detalle
+    return "El tenant choca con otro registrado al mismo tiempo; reintenta"
+
+
+async def _ensure_external_ref_free(db: AsyncSession, provider: str, external_id: str) -> None:
+    """409 si ya hay un tenant con ese id externo. El `detail` lleva su `tenant_id`: la
+    plataforma lo usa para recuperar la sede tras un reintento (doc/integracion/plataforma_sedes.md)."""
+    result = await db.execute(
+        select(Tenant).where(Tenant.external_provider == provider, Tenant.external_id == external_id)
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya existe un tenant para {provider}:{external_id} (tenant_id={existing.id})",
+        )
+
+
 def _slugify(name: str) -> str:
     slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
     return slug or "tenant"
@@ -36,7 +72,10 @@ async def create_tenant(
     warehouse_code: str = DEFAULT_WAREHOUSE_CODE,
     warehouse_name: str = "Bodega Principal",
     warehouse_address: str | None = None,
+    notify_admin: bool = True,
 ) -> TenantCreateResponse:
+    """`notify_admin=False`: no genera el enlace de activación ni manda el email; lo hace quien
+    llama cuando el alta está completa (el aprovisionamiento por plataforma, R-07)."""
     slug = request.slug if request.slug else _slugify(request.name)
 
     if request.external_id and not request.external_provider:
@@ -45,21 +84,7 @@ async def create_tenant(
             detail="external_id requiere external_provider",
         )
     if request.external_provider and request.external_id:
-        result = await db.execute(
-            select(Tenant).where(
-                Tenant.external_provider == request.external_provider,
-                Tenant.external_id == request.external_id,
-            )
-        )
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Ya existe un tenant para {request.external_provider}:{request.external_id} "
-                    f"(tenant_id={existing.id})"
-                ),
-            )
+        await _ensure_external_ref_free(db, request.external_provider, request.external_id)
     parent: Tenant | None = None
     if request.parent_tenant_id:
         parent = (
@@ -128,7 +153,18 @@ async def create_tenant(
         created_at=now,
     )
     db.add(admin_user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        # Un reintento idéntico (mismo nombre → mismo slug, mismo external_id) puede chocar primero por
+        # el slug: PostgreSQL reporta el primer índice único que revisa. Sea cual sea el que saltó, si
+        # el id externo ya existe el 409 es el de siempre, con el tenant_id del que ganó la carrera.
+        if request.external_provider and request.external_id:
+            await _ensure_external_ref_free(db, request.external_provider, request.external_id)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_detalle_conflicto(exc, auto_slug=not request.slug)
+        ) from exc
     await db.refresh(tenant)
     await db.refresh(admin_user)
 
@@ -137,17 +173,8 @@ async def create_tenant(
         tenant_id, code=warehouse_code, name=warehouse_name, location_address=warehouse_address
     )
 
-    # Token de activación almacenado en Redis (consumido por F-4 /auth/activate)
-    activation_token = await generate_activation_token(admin_user.id, redis)
-
-    # El tenant ya está creado: si el email no se puede encolar se registra y se
-    # sigue. El administrador puede reenviarlo desde el portal.
-    dispatch_activation_email(
-        to_email=admin_user.email,
-        full_name=admin_user.full_name,
-        token=activation_token,
-        template="tenant_created",
-    )
+    if notify_admin:
+        await notify_tenant_admin(admin_user.id, admin_user.email, admin_user.full_name, redis)
 
     return TenantCreateResponse(
         id=tenant.id,
@@ -162,6 +189,16 @@ async def create_tenant(
         admin_email=admin_user.email,
         warehouse_id=warehouse.id if warehouse else None,
     )
+
+
+async def notify_tenant_admin(user_id: str, email: str, full_name: str, redis: aioredis.Redis) -> None:
+    """Enlace de activación del admin de un tenant nuevo (consumido por /auth/activate).
+
+    El tenant ya está creado: si el email no se puede encolar se registra y se sigue. El
+    administrador puede reenviarlo desde el portal.
+    """
+    activation_token = await generate_activation_token(user_id, redis)
+    dispatch_activation_email(to_email=email, full_name=full_name, token=activation_token, template="tenant_created")
 
 
 async def list_tenants(

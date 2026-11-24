@@ -164,6 +164,16 @@
 
 ### R-06 — Alcance de la key de plataforma
 
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
+> **Cambio:** opción mínima de la revisión. `_get_platform_tenant` (`services/platform.py`) excluye
+> `external_provider = 'panel'`, así que `GET`/`DELETE /v1/platform/tenants/{id}` responden 404 a una
+> sede del panel; `GET …/by-external/panel/{id}` también da 404; y `POST /v1/platform/tenants` rechaza
+> `external_provider: "panel"` con 422 (si no, la plataforma podría crear tenants que luego no ve). No
+> se guarda qué key aprovisionó cada tenant: hoy hay una sola plataforma (Appits). Si llega otra, ese
+> es el siguiente paso. `doc/integracion/plataforma_sedes.md` actualizado.
+> **Tests:** `tests/test_review_plataforma.py::test_r06_plataforma_no_ve_ni_da_de_baja_una_sede_del_panel`,
+> `…::test_r06_plataforma_no_puede_crear_tenants_como_panel`.
+
 - **Qué pasa:** `_get_platform_tenant` solo comprueba `external_provider IS NOT NULL`. Las sedes del panel
   llevan `external_provider='panel'` y `POST /admin/tenants` acepta cualquier proveedor. La documentación
   dice que la key solo gestiona los tenants que ella aprovisionó.
@@ -175,12 +185,44 @@
 
 ### R-07 — Aprovisionamiento a medias
 
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
+> **Cambio:** `provision_tenant` es todo o nada. Tras crear tenant y admin, el resto (almacén, key,
+> auditoría) va en `_complete_provisioning`; si falla, `_undo_provisioning` borra el tenant recién
+> creado por id (todas las FK hacia `tenants` son `ON DELETE CASCADE`: se va su admin, almacén, zonas y
+> key) y responde 500 «no se creó nada; se puede reintentar» (un `HTTPException` propio conserva su
+> código). El reintento con el mismo `external_id` crea la sede completa y devuelve su key. El email de
+> activación del admin sale solo cuando la sede está completa (`create_tenant(notify_admin=False)` +
+> `notify_tenant_admin`); antes se mandaba un enlace que quedaba muerto.
+> Tras una revisión independiente se afinó: el aviso al admin (Redis/Celery) se registra pero ya no tumba
+> una sede completa, que perdería su key (solo se devuelve una vez); y `_undo_provisioning` informa si
+> pudo borrar: si no, el 500 trae el `tenant_id` y dice que no se pudo deshacer, en vez de prometer «no se
+> creó nada».
+> **Tests:** `tests/test_review_plataforma.py::test_r07_si_falla_un_paso_no_queda_nada_y_el_reintento_completa`
+> (dos casos: `falla_la_key`, `falla_el_almacen`),
+> `…::test_r07_si_falla_el_ultimo_paso_se_deshace_aunque_ya_haya_key_y_almacen`,
+> `…::test_r07_si_no_se_puede_deshacer_el_500_no_dice_que_no_se_creo_nada`,
+> `…::test_r07_si_falla_solo_el_aviso_al_admin_la_sede_se_devuelve_completa`.
+
 - **Qué pasa:** `create_tenant` hace commit del tenant y del admin antes de crear almacén y key. Si un
   paso posterior falla, nada se deshace, y el reintento con el mismo `external_id` da 409 sin key.
 - **Corrección:** deshacer (desactivar o borrar) el tenant si falla un paso posterior, o que el reintento
   complete el tenant existente y devuelva su key nueva.
 
 ### R-08 — 500 en altas simultáneas
+
+> **Estado: ✅ Corregido** · rama `fix/R-06-07-08-plataforma` · commit: `98b7b53`
+> **Cambio:** `create_tenant` (`services/admin_tenant.py`) captura `IntegrityError` en el commit, hace
+> rollback y responde 409 con el motivo según el índice (`uq_tenants_external_ref`, `idx_tenants_slug`,
+> `uq_users_email_lower`). Si choca el `external_id`, el `detail` es el mismo que el de un reintento,
+> con el `tenant_id` del que ganó, que es lo que la plataforma usa para recuperar la sede.
+> Tras la revisión independiente: PostgreSQL reporta el primer índice único que choca, y un reintento
+> **idéntico** (mismo nombre → mismo slug) choca antes por `idx_tenants_slug` que por el `external_id`.
+> Ahora, en cualquier choque, si el `external_id` ya existe se responde el 409 con `tenant_id`; si solo
+> chocó un slug calculado por el sistema, el 409 dice que otra alta con el mismo nombre estaba en curso.
+> **Tests:** `tests/test_review_plataforma.py::test_r08_dos_altas_simultaneas_con_el_mismo_external_id_dan_201_y_409`
+> y `…::test_r08_el_mismo_alta_enviada_dos_veces_a_la_vez_responde_409_con_el_tenant_existente`.
+> La carrera es determinista: una barrera en `commit` retiene las dos altas hasta que ambas pasaron
+> las comprobaciones previas. Antes del cambio una de las dos lanzaba `IntegrityError` (500).
 
 - Capturar `IntegrityError` en el commit de `create_tenant` y devolver 409, como ya hace `create_user`.
 
