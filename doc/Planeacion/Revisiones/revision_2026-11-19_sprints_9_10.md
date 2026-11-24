@@ -178,7 +178,7 @@ los Sprints 9 y 10.
 
 ### A-1 — Una reserva se podía liberar o despachar dos veces
 
-> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` (sobre `fix/R-01-02-reservas`) · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` (sobre `fix/R-01-02-reservas`) · commit: `e047f8c`
 > **Qué pasaba:** confirmar, cancelar y expirar leían el estado de la reserva sin bloquear la fila. Prod corre
 > 4 workers, cada uno con su bucle de expiración: dos podían expirar la misma reserva, o una cancelación por
 > API cruzarse con la expiración, y liberarla dos veces (`available_qty` inflado, posible sobreventa). Una
@@ -192,7 +192,7 @@ los Sprints 9 y 10.
 
 ### A-2 — Webhooks reenviados duplicados y errores tragados
 
-> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/reservas-webhooks-concurrencia` · commit: `e047f8c`
 > **Qué pasaba:** el despacho (`main.py`) usaba una sola sesión para todos los tenants, con commit al final y
 > `except Exception: pass`. Un error tardío deshacía el estado de entregas ya enviadas por HTTP y el siguiente
 > ciclo las reenviaba; los 4 workers, además, podían enviar la misma entrega a la vez.
