@@ -53,8 +53,9 @@ Emitirla en cualquier otro tenant responde `403`, incluso siendo super_admin.
 ## 1. Crear la sede — `POST /v1/platform/tenants`
 
 Crea, en orden: el tenant con su usuario `tenant_admin` (recibe email de activación), el
-almacén físico con sus tres zonas, y la API key de la sede. Si el almacén falla, la llamada
-falla (500) en lugar de devolver un tenant a medias.
+almacén físico con sus tres zonas, y la API key de la sede. Es todo o nada: si falla el almacén o la
+key, se borra lo creado en esa llamada y responde `500`; no queda un tenant a medias y se puede
+reintentar con el mismo `external_id`. El email de activación sale solo cuando la sede está completa.
 
 ```http
 POST /v1/platform/tenants
@@ -143,9 +144,10 @@ por defecto de las entradas de stock. **`key_secret` no se vuelve a mostrar.**
 |---|---|---|
 | `403` | La credencial no es una key `PLATFORM` del tenant interno | Revisar la key de plataforma |
 | `404` | `parent_tenant_id` no existe | Verificar el tenant del taller principal |
-| `409` | Ya hay un tenant con ese `external_id` — el `detail` incluye `tenant_id=…` | Es un reintento: usar el tenant existente (ver §2). **No** se crea duplicado. |
+| `409` | Ya hay un tenant con ese `external_id` — el `detail` incluye `tenant_id=…` (también si las dos altas llegaron a la vez) | Es un reintento: usar el tenant existente (ver §2). **No** se crea duplicado. |
 | `409` | `admin_email` ya registrado en otro tenant | Usar un correo distinto para la sede |
-| `422` | Scopes `ADMIN`/`PLATFORM` en `api_key_scopes`, o datos inválidos | Corregir el body |
+| `422` | Scopes `ADMIN`/`PLATFORM` en `api_key_scopes`, `external_provider: "panel"` (reservado a las sedes creadas en el panel), o datos inválidos | Corregir el body |
+| `500` | Falló un paso del alta (almacén o key) | Si el `detail` dice «no se creó nada»: reintentar con el mismo body. Si trae un `tenant_id=…`, tampoco se pudo deshacer: no reintentar, avisar a soporte de MicroNuba |
 
 ---
 
@@ -179,7 +181,8 @@ La segunda forma sirve tras un `409` en el alta, o para saber si una sede ya est
 ```
 
 `404` si el tenant no existe **o no fue creado por una plataforma**: los tenants dados de alta
-a mano en el panel (los talleres principales de hoy) no son visibles ni gestionables desde aquí.
+a mano en el panel (los talleres principales de hoy y las sedes creadas desde el panel, con
+`external_provider: "panel"`) no son visibles ni gestionables desde aquí.
 No devuelve la API key: si se perdió, se emite otra desde el panel.
 
 ---
