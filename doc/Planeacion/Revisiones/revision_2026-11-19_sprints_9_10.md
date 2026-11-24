@@ -275,6 +275,21 @@
 - `reset_url` usa `ACTIVATION_BASE_URL`, cuyo valor por defecto (`config.py`, `.env.example`) es el API.
   Cambiar el valor por defecto al portal (`http://localhost:8081`) o separar `PORTAL_BASE_URL`.
 
+### A-3 — Una API key de solo lectura podía escribir (hallazgo adicional)
+
+> **Estado: ✅ Corregido** · rama `fix/api-key-scopes` · commit: `07a6551`
+> No estaba en esta revisión; apareció al probar los Sprints 9 y 10 y es anterior a ellos.
+> **Qué pasaba:** `require_roles` traducía los scopes de una API key a roles y le daba el más alto.
+> `READ_INVENTORY`/`READ_CATALOG` daban `inventory_manager`, así que una key de solo lectura creaba almacenes,
+> registraba entradas y productos. Además `WRITE_CATALOG` abría las escrituras de inventario y
+> `MANAGE_RESERVATIONS` las entradas.
+> **Cambio (`api/deps.py`):** los scopes de lectura dan solo `viewer`; las escrituras exigen a la API key el
+> scope de `doc/integracion/api_scopes.md`: catálogo `WRITE_CATALOG`; movimientos, conteos, bulk y snapshots
+> `WRITE_INVENTORY`; almacenes y bins `MANAGE_WAREHOUSES` o `WRITE_INVENTORY`; reservas y cuotas por canal
+> `MANAGE_RESERVATIONS` o `WRITE_INVENTORY`; lotes `WRITE_CATALOG` o `WRITE_INVENTORY`. `ADMIN` conserva el
+> acceso total. Los usuarios con JWT no cambian. La key de una sede de Appits (todos los scopes) no pierde nada.
+> **Tests:** `tests/test_api_key_scopes.py` (6).
+
 ---
 
 ## Cómo entregar las correcciones

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
+from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_batch_write
 from app.schemas.batch import (
     BatchCreate,
     BatchResponse,
@@ -37,7 +37,7 @@ serials_router = APIRouter(tags=["Lotes y Seriales"])
 )
 async def create_batch(
     body: BatchCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_batch_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await svc.create_batch(body, db, auth.tenant_id)
@@ -102,7 +102,7 @@ async def update_batch(
     batch_id: str,
     body: BatchUpdate,
     request: Request,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_batch_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     performed_by = {
@@ -134,7 +134,7 @@ async def update_batch(
 async def add_serials(
     batch_id: str,
     body: SerialNumberBulkCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_batch_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await svc.add_serials(batch_id, body, db, auth.tenant_id)

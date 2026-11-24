@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
+from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_reservation_write
 from app.schemas.channel_allocation import ChannelAllocationCreate, ChannelAllocationResponse, ChannelAllocationUpdate
 from app.services import channel_allocation as svc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/channel-allocations", tags=["Channel Allocation"])
 )
 async def create_allocation(
     body: ChannelAllocationCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await svc.create_allocation(body, db, auth.tenant_id)
@@ -66,7 +66,7 @@ async def list_allocations(
 async def update_allocation(
     allocation_id: str,
     body: ChannelAllocationUpdate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await svc.update_allocation(allocation_id, body, db, auth.tenant_id)
@@ -86,7 +86,7 @@ async def update_allocation(
 )
 async def delete_allocation(
     allocation_id: str,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     await svc.delete_allocation(allocation_id, db, auth.tenant_id)
