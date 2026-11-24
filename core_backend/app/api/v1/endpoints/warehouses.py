@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
+from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_warehouse_write
 from app.schemas.common import PaginatedResponse
 from app.schemas.warehouse import WarehouseCreate, WarehouseListItem, WarehouseResponse, WarehouseUpdate, ZoneCreate, ZoneResponse, ZoneUpdate
 from app.services.audit import log_action
@@ -61,7 +61,7 @@ async def get_warehouses(
 async def add_warehouse(
     body: WarehouseCreate,
     request: Request,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     wh = await create_warehouse(body, db, auth.tenant_id)
@@ -111,7 +111,7 @@ async def patch_warehouse(
     warehouse_id: str,
     body: WarehouseUpdate,
     request: Request,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     updated = await update_warehouse(warehouse_id, body, db, auth.tenant_id)
@@ -164,7 +164,7 @@ async def add_zone(
     warehouse_id: str,
     body: ZoneCreate,
     request: Request,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     zone = await create_zone(warehouse_id, body, db, auth.tenant_id)
@@ -209,7 +209,7 @@ async def get_zone_detail(
 async def patch_zone(
     zone_id: str,
     body: ZoneUpdate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await update_zone(zone_id, body, db, auth.tenant_id)

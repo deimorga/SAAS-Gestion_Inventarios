@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
+from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_warehouse_write
 from app.schemas.bin import BinCreate, BinResponse, BinUpdate, LocationLockCreate, LocationLockResponse
 from app.services import bin as bin_svc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +49,7 @@ async def create_bin(
     warehouse_id: str,
     zone_id: str,
     body: BinCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await bin_svc.create_bin(warehouse_id, zone_id, body, db, auth.tenant_id)
@@ -69,7 +69,7 @@ async def create_bin(
 async def update_bin(
     bin_id: str,
     body: BinUpdate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await bin_svc.update_bin(bin_id, body, db, auth.tenant_id)
@@ -89,7 +89,7 @@ async def update_bin(
 )
 async def deactivate_bin(
     bin_id: str,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     await bin_svc.deactivate_bin(bin_id, db, auth.tenant_id)
@@ -118,7 +118,7 @@ async def deactivate_bin(
 async def lock_bin(
     bin_id: str,
     body: LocationLockCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     return await bin_svc.lock_bin(bin_id, body, db, auth.tenant_id, auth.user_id)
@@ -138,7 +138,7 @@ async def lock_bin(
 )
 async def unlock_bin(
     bin_id: str,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_warehouse_write),
     db: AsyncSession = Depends(get_auth_db),
 ):
     await bin_svc.unlock_bin(bin_id, db, auth.tenant_id)

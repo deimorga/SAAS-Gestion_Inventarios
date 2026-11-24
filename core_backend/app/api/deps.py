@@ -224,13 +224,25 @@ _API_KEY_SCOPE_ROLES: dict[str, set[str]] = {
     "WRITE_INVENTORY":     {"tenant_admin", "inventory_manager"},
     "MANAGE_WAREHOUSES":   {"tenant_admin", "inventory_manager"},
     "MANAGE_RESERVATIONS": {"tenant_admin", "inventory_manager"},
-    "READ_CATALOG":        {"inventory_manager", "viewer"},
-    "READ_INVENTORY":      {"inventory_manager", "viewer"},
+    # Solo lectura: antes daban `inventory_manager` y una key de lectura podía escribir.
+    "READ_CATALOG":        {"viewer"},
+    "READ_INVENTORY":      {"viewer"},
 }
 
 
-def require_roles(*roles: str):
+def require_roles(*roles: str, api_key_scopes: frozenset[str] | None = None):
+    """Guard por rol (JWT) y, para API keys, por scope.
+
+    `api_key_scopes`: en las escrituras, la API key necesita uno de estos scopes; es el contrato de
+    doc/integracion/api_scopes.md. Sin él (lecturas), los scopes se traducen a roles.
+    El rol que da un scope no basta para escribir: `WRITE_CATALOG` y `WRITE_INVENTORY` dan el mismo
+    rol (`inventory_manager`), pero uno no debe abrir las escrituras del otro.
+    """
     async def _check(auth: AuthContext = Depends(get_current_auth)) -> AuthContext:
+        if auth.auth_type == "api_key" and api_key_scopes is not None:
+            if set(auth.scopes) & api_key_scopes:
+                return auth
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
         if auth.auth_type == "api_key":
             effective_roles: set[str] = set()
             for scope in auth.scopes:
@@ -246,9 +258,24 @@ def require_roles(*roles: str):
 
 require_admin = require_roles("tenant_admin", "super_admin")
 require_catalog_read = require_roles("tenant_admin", "super_admin", "inventory_manager", "viewer")
-require_catalog_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
 require_inventory_read = require_roles("tenant_admin", "super_admin", "inventory_manager", "viewer")
-require_inventory_write = require_roles("tenant_admin", "super_admin", "inventory_manager")
+
+# Escrituras: mismo rol para usuarios; para API keys, el scope de doc/integracion/api_scopes.md.
+# ADMIN conserva el acceso total que ya tenía.
+_WRITERS = ("tenant_admin", "super_admin", "inventory_manager")
+require_catalog_write = require_roles(*_WRITERS, api_key_scopes=frozenset({"WRITE_CATALOG", "ADMIN"}))
+require_inventory_write = require_roles(*_WRITERS, api_key_scopes=frozenset({"WRITE_INVENTORY", "ADMIN"}))
+require_warehouse_write = require_roles(
+    *_WRITERS, api_key_scopes=frozenset({"MANAGE_WAREHOUSES", "WRITE_INVENTORY", "ADMIN"})
+)
+require_reservation_write = require_roles(
+    *_WRITERS, api_key_scopes=frozenset({"MANAGE_RESERVATIONS", "WRITE_INVENTORY", "ADMIN"})
+)
+# Lotes: la guía los pone en WRITE_CATALOG (crear) y WRITE_INVENTORY (seriales); el código ya los
+# aceptaba con WRITE_INVENTORY, así que valen los dos.
+require_batch_write = require_roles(
+    *_WRITERS, api_key_scopes=frozenset({"WRITE_CATALOG", "WRITE_INVENTORY", "ADMIN"})
+)
 
 
 # ── Guard de plataforma (Appits y similares) ──────────────────────────────

@@ -23,6 +23,15 @@ Las API Keys se crean vía `POST /v1/api-keys` usando un JWT de sesión con rol 
 
 ---
 
+## Cómo se aplican
+
+- Las **consultas** (`GET`) se permiten con cualquier scope de datos (`READ_*`, `WRITE_*`, `MANAGE_*`), como hasta ahora.
+- Una key **escribe** solo con el scope de esa escritura: `READ_*` nunca escribe, `WRITE_CATALOG` no mueve
+  stock y `WRITE_INVENTORY` no crea productos (`403 Permisos insuficientes`).
+- Las escrituras de almacenes y bins aceptan `MANAGE_WAREHOUSES` o `WRITE_INVENTORY`; las de reservas y cuotas
+  por canal, `MANAGE_RESERVATIONS` o `WRITE_INVENTORY`; las de lotes, `WRITE_CATALOG` o `WRITE_INVENTORY`.
+- `ADMIN` da acceso total.
+
 ## Endpoints por scope
 
 ### READ_INVENTORY

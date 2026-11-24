@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_inventory_write
+from app.api.deps import AuthContext, get_auth_db, require_inventory_read, require_reservation_write
 from app.schemas.reservation import ReservationConfirm, ReservationCreate, ReservationResponse
 from app.services import reservation as svc
 
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/reservations", tags=["Reservations"])
 )
 async def create_reservation(
     body: ReservationCreate,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db=Depends(get_auth_db),
 ):
     return await svc.create_reservation(db, auth.tenant_id, body)
@@ -89,7 +89,7 @@ async def get_reservation(
 async def confirm_reservation(
     reservation_id: str,
     body: ReservationConfirm,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db=Depends(get_auth_db),
 ):
     return await svc.confirm_reservation(db, auth.tenant_id, reservation_id, body)
@@ -113,7 +113,7 @@ async def confirm_reservation(
 )
 async def cancel_reservation(
     reservation_id: str,
-    auth: AuthContext = Depends(require_inventory_write),
+    auth: AuthContext = Depends(require_reservation_write),
     db=Depends(get_auth_db),
 ):
     return await svc.cancel_reservation(db, auth.tenant_id, reservation_id)
