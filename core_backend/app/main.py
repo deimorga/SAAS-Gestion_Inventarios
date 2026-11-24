@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -24,41 +25,15 @@ async def _expire_reservations_loop() -> None:
     sin tenant context. Se itera sobre la tabla tenants (sin RLS) y se
     procesa cada tenant con su contexto.
     """
-    from sqlalchemy import text
-    from app.core.database import AsyncSessionLocal, set_tenant_context
-    from app.services.reservation import expire_reservation
+    from app.services.reservation import expire_due_reservations
 
     while True:
         await asyncio.sleep(60)
         try:
-            async with AsyncSessionLocal() as session:
-                tenant_rows = (
-                    await session.execute(text("SELECT id FROM tenants"))
-                ).fetchall()
-
-                expired_any = False
-                for tenant_row in tenant_rows:
-                    tid = str(tenant_row.id)
-                    await set_tenant_context(session, tid)
-                    expired_rows = (
-                        await session.execute(
-                            text(
-                                "SELECT id FROM reservations "
-                                "WHERE status = 'ACTIVE' AND expires_at <= now()"
-                            )
-                        )
-                    ).fetchall()
-
-                    for row in expired_rows:
-                        # Libera lote por lote lo que la reserva apartó (no todas las
-                        # filas del producto en la zona, como hacía el UPDATE anterior).
-                        await expire_reservation(session, tid, str(row.id))
-                        expired_any = True
-
-                if expired_any:
-                    await session.commit()
+            await expire_due_reservations()
         except Exception:
-            pass
+            # Un fallo general (p. ej. la base caída) no debe matar el bucle, pero tampoco callarse
+            logging.getLogger(__name__).exception("Fallo en el bucle de expiración de reservas")
 
 
 async def _dispatch_webhooks_loop() -> None:

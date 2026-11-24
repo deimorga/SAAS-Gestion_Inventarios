@@ -15,6 +15,7 @@ por saldo concreto (producto + zona + bin + lote + proveedor) del que se apartó
 Las reservas creadas antes de la migración 015 no tienen asignaciones: se confirman,
 cancelan y expiran contra el saldo único de producto + zona, como antes.
 """
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -34,6 +35,8 @@ from app.schemas.reservation import (
     ReservationResponse,
 )
 from app.services.traceability import get_bin_in_zone, get_supplier_of_tenant, opt_str
+
+logger = logging.getLogger(__name__)
 
 _QTY = Decimal("0.0001")
 
@@ -154,26 +157,53 @@ async def _item_allocations(db: AsyncSession, tenant_id: str, item_row) -> list[
             for r in rows
         ]
 
-    legacy = (
+    # R-02: la reserva antigua no dice de qué fila salió. Se libera de las filas que DE VERDAD tienen
+    # reservado (la que más tiene primero) y, si no alcanza una, se reparte entre varias. Antes se
+    # elegía la fila sin lote aunque no tuviera nada reservado → 409 y una reserva imposible de
+    # cancelar, confirmar o expirar.
+    # `reserved_qty` de una fila suma TODAS las reservas; las posteriores a la 015 sí tienen asignaciones
+    # y se descuentan, para no llevarse lo que apartó una reserva nueva. Una reserva ACTIVE tiene
+    # apartada toda su cantidad (confirmar la completa).
+    needed = Decimal(str(item_row.quantity))
+    candidates = (
         await db.execute(
             text(
-                "SELECT id, lot_number, bin_id, supplier_id FROM stock_balances "
-                "WHERE tenant_id = :tid AND product_id = :pid AND zone_id = :zid "
-                "ORDER BY (bin_id IS NOT NULL), (lot_number IS NOT NULL), reserved_qty DESC LIMIT 1"
+                "SELECT id, lot_number, bin_id, supplier_id, sin_asignar AS reserved_qty FROM ("
+                "  SELECT sb.id, sb.lot_number, sb.bin_id, sb.supplier_id, "
+                "         sb.reserved_qty - COALESCE(("
+                "           SELECT SUM(ra.quantity) FROM reservation_allocations ra "
+                "           JOIN reservation_items ri ON ri.id = ra.reservation_item_id "
+                "           JOIN reservations r ON r.id = ri.reservation_id "
+                "           WHERE ra.stock_balance_id = sb.id AND r.status = 'ACTIVE'), 0) AS sin_asignar "
+                "  FROM stock_balances sb "
+                "  WHERE sb.tenant_id = :tid AND sb.product_id = :pid AND sb.zone_id = :zid AND sb.reserved_qty > 0"
+                ") t WHERE sin_asignar > 0 "
+                "ORDER BY sin_asignar DESC, (bin_id IS NOT NULL), (lot_number IS NOT NULL), id"
             ),
             {"tid": tenant_id, "pid": str(item_row.product_id), "zid": str(item_row.zone_id)},
         )
-    ).fetchone()
-    if legacy is None:
+    ).fetchall()
+    total_reserved = sum((Decimal(str(c.reserved_qty)) for c in candidates), Decimal("0"))
+    if total_reserved < needed:
         raise HTTPException(
-            status_code=404,
-            detail=f"No hay saldo para producto {item_row.product_id} en zona {item_row.zone_id}",
+            status_code=409,
+            detail=(
+                f"Saldo reservado insuficiente para la reserva: necesita {needed} y la zona solo tiene "
+                f"{total_reserved} reservado para el producto {item_row.product_id}"
+            ),
         )
-    return [{
-        "id": None, "balance_id": str(legacy.id), "lot_number": legacy.lot_number,
-        "bin_id": opt_str(legacy.bin_id), "supplier_id": opt_str(legacy.supplier_id),
-        "quantity": Decimal(str(item_row.quantity)),
-    }]
+    allocations: list[dict] = []
+    left = needed
+    for c in candidates:
+        if left <= 0:
+            break
+        take = min(left, Decimal(str(c.reserved_qty)))
+        left -= take
+        allocations.append({
+            "id": None, "balance_id": str(c.id), "lot_number": c.lot_number,
+            "bin_id": opt_str(c.bin_id), "supplier_id": opt_str(c.supplier_id), "quantity": take,
+        })
+    return allocations
 
 
 async def _item_rows(db: AsyncSession, reservation_id: str):
@@ -515,8 +545,49 @@ async def cancel_reservation(db: AsyncSession, tenant_id: str, reservation_id: s
     return await get_reservation(db, tenant_id, reservation_id)
 
 
+async def expire_due_reservations(tenant_ids: list[str] | None = None) -> int:
+    """Expira las reservas ACTIVE vencidas. `tenant_ids` limita los tenants (los tests lo usan para
+    no tocar datos ajenos); sin él, todos. Devuelve cuántas expiró."""
+    from app.core.database import AsyncSessionLocal, set_tenant_context
+
+    if tenant_ids is None:
+        async with AsyncSessionLocal() as session:
+            # `tenants` no está bajo RLS
+            tenant_ids = [str(r.id) for r in (await session.execute(text("SELECT id FROM tenants"))).fetchall()]
+
+    expired = 0
+    for tid in tenant_ids:
+        try:
+            async with AsyncSessionLocal() as session:
+                await set_tenant_context(session, tid)
+                due = [
+                    str(r.id)
+                    for r in (
+                        await session.execute(
+                            text("SELECT id FROM reservations WHERE status = 'ACTIVE' AND expires_at <= now()")
+                        )
+                    ).fetchall()
+                ]
+        except Exception:
+            logger.exception("No se pudieron listar las reservas vencidas del tenant %s; sigue con los demás", tid)
+            continue
+        # R-01: cada reserva en su propia transacción. Antes una sola reserva que fallaba al liberarse
+        # deshacía todo y, como volvía a fallar cada minuto, ninguna reserva de ningún tenant expiraba.
+        for rid in due:
+            async with AsyncSessionLocal() as session:
+                await set_tenant_context(session, tid)
+                try:
+                    await expire_reservation(session, tid, rid)
+                    await session.commit()
+                    expired += 1
+                except Exception:
+                    await session.rollback()
+                    logger.exception("No se pudo expirar la reserva %s del tenant %s; sigue con las demás", rid, tid)
+    return expired
+
+
 async def expire_reservation(db: AsyncSession, tenant_id: str, reservation_id: str) -> None:
-    """Libera una reserva vencida. No hace commit: lo hace el bucle de expiración."""
+    """Libera una reserva vencida. No hace commit: lo hace quien llama (`expire_due_reservations`)."""
     await _release(db, tenant_id, reservation_id)
     await db.execute(
         text("UPDATE reservations SET status = 'EXPIRED', updated_at = now() WHERE id = :id"),
