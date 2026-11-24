@@ -128,7 +128,7 @@
 
 ### R-10 — Enlace de reseteo en desarrollo
 
-> **Estado: ✅ Corregido** · rama `fix/R-10-reset-url` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-10-reset-url` · commit: `cd3d62e`
 > **Cambio:** el valor por defecto de `ACTIVATION_BASE_URL` pasa del API (`http://api.inventarios.local:8090`)
 > al portal de desarrollo (`http://localhost:8081`, el puerto de `docker-compose.dev.yml`) en
 > `core/config.py`, `.env.example`, `CLAUDE.md` y `DT_admin_multitenant.md`. Se eligió cambiar el valor por
