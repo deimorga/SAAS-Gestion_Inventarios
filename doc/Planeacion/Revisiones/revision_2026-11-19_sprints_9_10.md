@@ -133,8 +133,7 @@
 
 ### A-3 — Una API key de solo lectura podía escribir (hallazgo adicional)
 
-> **Estado: ✅ Corregido** · rama `fix/api-key-scopes` · commit: _pendiente_
-pi-key-scopes`/ s|commit: _pendiente_|commit: `07a6551`|
+> **Estado: ✅ Corregido** · rama `fix/api-key-scopes` · commit: `07a6551`
 > No estaba en esta revisión; apareció al probar los Sprints 9 y 10 y es anterior a ellos.
 > **Qué pasaba:** `require_roles` traducía los scopes de una API key a roles y le daba el más alto.
 > `READ_INVENTORY`/`READ_CATALOG` daban `inventory_manager`, así que una key de solo lectura creaba almacenes,
