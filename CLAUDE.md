@@ -347,7 +347,7 @@ Critical settings in `.env`:
 | `ADMIN_BOOTSTRAP_SECRET` | First super_admin protection | change-me-bootstrap-secret |
 | `ENABLE_SWAGGER` | Swagger UI visibility | true (dev) / false (prod) |
 | `RESEND_API_KEY` | Email provider (Resend) | re_test_placeholder |
-| `ACTIVATION_BASE_URL` | User activation link base | http://api.inventarios.local:8090 |
+| `ACTIVATION_BASE_URL` | Portal base URL for email links (activation, password reset) | http://localhost:8081 |
 | `ACTIVATION_TOKEN_TTL_HOURS` | Activation email link validity | 48 |
 | `API_KEY_EXPIRY_DAYS` | Default API key lifetime | 365 |
 | `WEBHOOK_POLL_SECONDS` | Webhook dispatch polling interval | 10 |
