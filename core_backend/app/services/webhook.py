@@ -1,7 +1,8 @@
 import hashlib
 import hmac as hmac_module
 import json
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
@@ -16,6 +17,8 @@ from app.schemas.webhook import (
     WebhookTestResponse,
     WebhookUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 _BACKOFF_SECONDS = [30, 300, 1800]
 _MAX_ATTEMPTS = 3
@@ -215,3 +218,108 @@ async def get_deliveries(db: AsyncSession, tenant_id: str, endpoint_id: str) -> 
         )
         for r in rows
     ]
+
+
+# ── Despacho de entregas pendientes (bucle de fondo) ─────────────────────────
+
+_PENDIENTE_SQL = (
+    "SELECT wd.id, wd.event_type, wd.payload, wd.attempts, we.url, we.secret "
+    "FROM webhook_deliveries wd JOIN webhook_endpoints we ON wd.endpoint_id = we.id "
+    "WHERE wd.tenant_id = :tid AND wd.status = 'PENDING' "
+    "AND (wd.next_attempt_at IS NULL OR wd.next_attempt_at <= now())"
+)
+
+
+async def dispatch_pending_webhooks(tenant_ids: list[str] | None = None) -> int:
+    """Entrega los webhooks pendientes. `tenant_ids` limita los tenants (los tests lo usan para no tocar
+    datos ajenos); sin él, todos. Devuelve cuántas entregas quedaron DELIVERED.
+
+    Cada entrega va en su propia transacción y se reclama con `FOR UPDATE SKIP LOCKED`:
+    - un error en una entrega se registra y no deshace el estado de las que ya salieron (antes una sola
+      sesión con commit al final y `except: pass` las reenviaba duplicadas en el siguiente ciclo);
+    - varios workers (prod corre 4, cada uno con su bucle) no envían la misma entrega a la vez.
+    Entrega «al menos una vez»: si el commit falla después del POST, se reintenta en el siguiente ciclo.
+    """
+    from app.core.config import settings
+    from app.core.database import AsyncSessionLocal, set_tenant_context
+
+    if tenant_ids is None:
+        async with AsyncSessionLocal() as session:
+            # `tenants` no está bajo RLS
+            tenant_ids = [str(r.id) for r in (await session.execute(text("SELECT id FROM tenants"))).fetchall()]
+
+    entregadas = 0
+    for tid in tenant_ids:
+        try:
+            async with AsyncSessionLocal() as session:
+                await set_tenant_context(session, tid)
+                ids = [str(r.id) for r in (await session.execute(text(_PENDIENTE_SQL), {"tid": tid})).fetchall()]
+        except Exception:
+            logger.exception("No se pudieron listar los webhooks pendientes del tenant %s; sigue con los demás", tid)
+            continue
+
+        for did in ids:
+            try:
+                async with AsyncSessionLocal() as session:
+                    await set_tenant_context(session, tid)
+                    if await _deliver_one(session, tid, did, settings):
+                        entregadas += 1
+                    await session.commit()
+            except Exception:
+                logger.exception("No se pudo despachar la entrega de webhook %s del tenant %s; sigue con las demás", did, tid)
+    return entregadas
+
+
+async def _deliver_one(db: AsyncSession, tenant_id: str, delivery_id: str, settings) -> bool:
+    """Reclama la entrega (si otro worker la tiene, la salta), hace el POST y guarda el resultado."""
+    row = (
+        await db.execute(
+            text(_PENDIENTE_SQL + " AND wd.id = :id FOR UPDATE OF wd SKIP LOCKED"),
+            {"tid": tenant_id, "id": delivery_id},
+        )
+    ).fetchone()
+    if row is None:
+        return False
+
+    payload_bytes = json.dumps(row.payload).encode()
+    signature = sign_payload(row.secret, payload_bytes)
+    try:
+        async with httpx.AsyncClient(timeout=settings.WEBHOOK_TIMEOUT_SECONDS) as http:
+            resp = await http.post(
+                row.url,
+                content=payload_bytes,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Webhook-Signature": signature,
+                    "X-Webhook-Event": row.event_type,
+                },
+            )
+        delivered = resp.status_code < 300
+        last_code: int | None = resp.status_code
+        last_body = resp.text[:1000]
+    except Exception as exc:  # el destino no respondió: es un intento fallido, no un error nuestro
+        delivered = False
+        last_code = None
+        last_body = str(exc)[:1000]
+
+    attempts = row.attempts + 1
+    next_attempt = None
+    if delivered:
+        new_status = "DELIVERED"
+    elif attempts >= settings.WEBHOOK_MAX_ATTEMPTS:
+        new_status = "FAILED"
+    else:
+        new_status = "PENDING"
+        backoff = _BACKOFF_SECONDS[min(attempts - 1, len(_BACKOFF_SECONDS) - 1)]
+        next_attempt = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+
+    await db.execute(
+        text(
+            "UPDATE webhook_deliveries "
+            "SET status = :s, attempts = :a, last_response_code = :lc, "
+            "    last_response_body = :lb, next_attempt_at = :na "
+            "WHERE id = :id"
+        ),
+        {"s": new_status, "a": attempts, "lc": last_code, "lb": last_body, "na": next_attempt, "id": delivery_id},
+    )
+    return delivered
