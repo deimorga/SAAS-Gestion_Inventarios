@@ -89,7 +89,7 @@
 
 ### R-05 — Stock histórico sin lote
 
-> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: `21cd13f`
 > **Cambio:** `process_adjustment` y `process_transfer` (`services/inventory.py`) buscan primero el saldo
 > existente y solo exigen `lot_number` (`require_lot`) cuando no hay saldo que corregir o mover. Un saldo
 > histórico sin lote de un producto con `track_lots=true` se puede poner en 0, ajustar y trasladar (el
@@ -132,7 +132,7 @@
 
 ### R-09 — Salida que consume stock reservado (anterior)
 
-> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-05-09-inventario` · commit: `21cd13f`
 > **Cambio:** dos capas. (1) `process_issue` y `process_transfer` suman lo ya pedido de cada saldo por los
 > ítems anteriores antes de validar contra `available_qty`, y responden 409 antes de tocar nada.
 > (2) `_apply_balance_change` rechaza con 409 cualquier descuento que deje `available_qty < 0`, así que
