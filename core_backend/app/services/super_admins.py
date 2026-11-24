@@ -19,7 +19,11 @@ from app.core.config import MICRONUBA_TENANT_ID
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user_management import SuperAdminCreate, SuperAdminUpdate, UserResponse
-from app.services.activation import dispatch_activation_email, generate_activation_token
+from app.services.activation import (
+    dispatch_activation_email,
+    generate_activation_token,
+    revoke_activation_tokens,
+)
 from app.services.password_reset import dispatch_reset_email, issue_reset_token
 from app.services.sessions import revoke_all_sessions
 from app.services.user_management import EMAIL_TAKEN, Actor, audit_user, email_exists, is_pending
@@ -128,9 +132,12 @@ async def update_super_admin(
         old_values["full_name"], new_values["full_name"] = target.full_name, request.full_name
         target.full_name = request.full_name
 
+    was_pending = is_pending(target)
     deactivated = reactivated = False
-    if deactivating and target.is_active:
+    if deactivating and (target.is_active or was_pending):
+        # R-03: también un super admin PENDIENTE; sin must_change_password su enlace ya no sirve.
         target.is_active = False
+        target.must_change_password = False
         deactivated = True
     elif request.is_active is True and not target.is_active:
         target.is_active = True
@@ -141,6 +148,8 @@ async def update_super_admin(
     if deactivated:
         await audit_user(db, target, "DEACTIVATE", actor)
         await revoke_all_sessions(target.id, redis)
+        if was_pending:
+            await revoke_activation_tokens(target.id, redis)
     if reactivated:
         await audit_user(db, target, "REACTIVATE", actor)
     if not (new_values or deactivated or reactivated):

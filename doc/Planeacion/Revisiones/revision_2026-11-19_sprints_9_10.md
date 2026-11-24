@@ -96,6 +96,32 @@
 
 ### R-03 — Desactivar a un pendiente
 
+> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: `20f7e92`
+> **Cambio:** `update_user` (`services/user_management.py`) y `update_super_admin`
+> (`services/super_admins.py`) desactivan también a un pendiente: `is_active=False`,
+> `must_change_password=False` (pasa a "desactivado"), auditan `DEACTIVATE`, cierran sus sesiones y
+> borran de Redis sus enlaces de activación con la nueva `revoke_activation_tokens(user_id, redis)`
+> (`services/activation.py`). Los tokens se guardan como `activation:<token>` → user_id, sin índice por
+> usuario, así que se recorren con `SCAN` y se borran los que apuntan a él. Aunque quedara algún token,
+> `activate_account` ya lo rechaza con **410** porque el usuario dejó de estar pendiente; tampoco se le
+> puede reenviar la activación (409). Si se reactiva, entra con «olvidé mi contraseña».
+> **Correcciones a esta revisión:** (1) el test espera **410**, no 400: es lo que responde
+> `activate_account` a un token que no sirve (`user.is_active or not user.must_change_password`).
+> (2) El hueco de `update_super_admin` se corrigió en el mismo cambio, con su test.
+> Tras una revisión independiente se afinó: (1) `revoke_activation_tokens` solo se llama al desactivar a un
+> **pendiente** (recorre todo el keyspace de Redis; no hacía falta en cada desactivación); (2) `activate_account`
+> lee al usuario con `FOR UPDATE`: si un admin lo está desactivando en ese instante, la activación espera y lee
+> el estado nuevo (sin el bloqueo activaba a un usuario recién desactivado). `update_super_admin` ya bloqueaba
+> su fila. Reactivar a un ex-pendiente lo deja activo **sin contraseña**: entra por «olvidé mi contraseña»
+> (no se le manda ningún email al reactivarlo).
+> **Tests:** `tests/test_review_usuarios.py::test_r03_tenant_admin_desactiva_un_pendiente_y_su_enlace_deja_de_servir`,
+> `…::test_r03_super_admin_desactiva_un_pendiente_de_un_tenant`,
+> `…::test_r03_desactivar_un_super_admin_pendiente_invalida_su_enlace`,
+> `…::test_r03_desactivar_a_un_pendiente_no_toca_el_enlace_de_otro_y_borra_todos_los_suyos`,
+> `…::test_r03_solo_se_recorre_redis_al_desactivar_a_un_pendiente`,
+> `…::test_r03_un_pendiente_desactivado_y_reactivado_entra_por_olvide_mi_contrasena`,
+> `…::test_r03_activar_y_desactivar_a_la_vez_deja_al_usuario_desactivado`.
+
 - **Qué pasa:** pendiente = `is_active=false` y `must_change_password=true`. La rama
   `request.is_active is False and user.is_active` nunca se ejecuta y responde 200 sin cambios ni
   auditoría. `update_super_admin` (`super_admins.py:132`) tiene el mismo hueco.
@@ -104,9 +130,20 @@
 - **Corrección:** al desactivar a un pendiente, `must_change_password=False` (pasa a "desactivado"),
   invalidar su token de activación y auditar `DEACTIVATE`. Esto **sustituye** la decisión "desactivar a
   un pendiente no hace nada".
-- **Test:** crear → desactivar → `POST /v1/auth/activate` con el token original → 400.
+- **Test:** crear → desactivar → `POST /v1/auth/activate` con el token original → ~~400~~ **410**
+  (ver la corrección arriba).
 
 ### R-04 — Cambio de rol sin cerrar sesiones
+
+> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: `20f7e92`
+> **Cambio:** `update_user` llama a `revoke_all_sessions(user.id, redis)` siempre que cambie el rol,
+> tanto desde el tenant_admin (`PATCH /v1/users/{id}`) como desde el super_admin
+> (`PATCH /admin/tenants/{id}/users/{uid}`). Cambiar solo el nombre no cierra la sesión.
+> `update_super_admin` no cambia roles, así que no aplica.
+> **Tests:** `tests/test_review_usuarios.py::test_r04_bajar_de_rol_a_un_tenant_admin_cierra_su_sesion`,
+> `…::test_r04_cambiar_el_rol_desde_el_tenant_admin_tambien_cierra_la_sesion`,
+> `…::test_r04_cambiar_solo_el_nombre_no_cierra_la_sesion`,
+> `…::test_r04_el_refresh_token_anterior_tampoco_sirve_tras_cambiar_el_rol`.
 
 - **Qué pasa:** `get_current_auth` toma el `role` del JWT y `update_user` cambia el rol sin
   `revoke_all_sessions` (sí lo hace al desactivar).

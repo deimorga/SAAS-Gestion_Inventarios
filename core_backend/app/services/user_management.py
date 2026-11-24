@@ -28,7 +28,11 @@ from app.schemas.user_management import (
     UserUpdate,
 )
 from app.services import activation as activation_service
-from app.services.activation import dispatch_activation_email, generate_activation_token
+from app.services.activation import (
+    dispatch_activation_email,
+    generate_activation_token,
+    revoke_activation_tokens,
+)
 from app.services.audit import log_action
 from app.services.password_reset import dispatch_reset_email, issue_reset_token
 from app.services.sessions import revoke_all_sessions
@@ -254,13 +258,18 @@ async def update_user(
     if request.full_name is not None and request.full_name != user.full_name:
         old_values["full_name"], new_values["full_name"] = user.full_name, request.full_name
         user.full_name = request.full_name
-    if request.role is not None and request.role != user.role:
+    role_changed = request.role is not None and request.role != user.role
+    if role_changed:
         old_values["role"], new_values["role"] = user.role, request.role
         user.role = request.role
 
+    was_pending = is_pending(user)
     deactivated = reactivated = False
-    if request.is_active is False and user.is_active:
+    if request.is_active is False and (user.is_active or was_pending):
+        # R-03: también se desactiva a un PENDIENTE (p. ej. un email mal escrito). Sin
+        # must_change_password deja de ser pendiente, así que su enlace ya no lo activa (410).
         user.is_active = False
+        user.must_change_password = False
         deactivated = True
     elif request.is_active is True and not user.is_active:
         user.is_active = True
@@ -271,6 +280,11 @@ async def update_user(
     if deactivated:
         await audit_user(db, user, "DEACTIVATE", actor)
         await revoke_all_sessions(user.id, redis)  # RF-051: cierra sus sesiones al momento
+        if was_pending:
+            await revoke_activation_tokens(user.id, redis)  # R-03: y el enlace que tuviera pendiente
+    elif role_changed:
+        # R-04: el rol va dentro del JWT; sin esto conservaría los permisos viejos hasta 30 min.
+        await revoke_all_sessions(user.id, redis)
     if reactivated:
         await audit_user(db, user, "REACTIVATE", actor)
     if not (new_values or deactivated or reactivated):
