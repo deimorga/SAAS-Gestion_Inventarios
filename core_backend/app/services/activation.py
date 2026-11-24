@@ -26,6 +26,20 @@ async def generate_activation_token(user_id: str, redis: aioredis.Redis) -> str:
     return token
 
 
+async def revoke_activation_tokens(user_id: str, redis: aioredis.Redis) -> int:
+    """Borra los enlaces de activación vigentes de un usuario. Retorna cuántos borró.
+
+    Los tokens se guardan como `activation:<token>` → user_id, sin índice por usuario, así que
+    se recorren con SCAN (no bloquea Redis) y se borran los que apuntan a este usuario. Solo se
+    llama al desactivar a un pendiente (raro): el recorrido es de todo el keyspace de la DB 0.
+    """
+    borrados = 0
+    async for key in redis.scan_iter(match=f"{_ACTIVATION_PREFIX}*", count=500):
+        if await redis.get(key) == user_id:
+            borrados += await redis.delete(key)
+    return borrados
+
+
 def activation_url(token: str) -> str:
     return f"{settings.ACTIVATION_BASE_URL.rstrip('/')}/activate?token={token}"
 
@@ -73,7 +87,9 @@ async def activate_account(
     # Single-use: eliminar el token antes de procesar para evitar replay
     await redis.delete(key)
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    # FOR UPDATE: si en este instante un admin está desactivando a este usuario, se espera a que
+    # confirme y se lee el estado nuevo; sin el bloqueo se activaría a un usuario recién desactivado.
+    result = await db.execute(select(User).where(User.id == user_id).with_for_update())
     user = result.scalar_one_or_none()
     # Solo se activa a un usuario PENDIENTE. Si lo desactivaron después de enviarle el email,
     # el enlace no puede reactivarlo; y a uno ya activo no le cambia la contraseña (para eso
