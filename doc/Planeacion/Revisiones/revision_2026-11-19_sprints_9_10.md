@@ -68,7 +68,7 @@
 
 ### R-03 — Desactivar a un pendiente
 
-> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: `20f7e92`
 > **Cambio:** `update_user` (`services/user_management.py`) y `update_super_admin`
 > (`services/super_admins.py`) desactivan también a un pendiente: `is_active=False`,
 > `must_change_password=False` (pasa a "desactivado"), auditan `DEACTIVATE`, cierran sus sesiones y
@@ -107,7 +107,7 @@
 
 ### R-04 — Cambio de rol sin cerrar sesiones
 
-> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-03-04-usuarios` · commit: `20f7e92`
 > **Cambio:** `update_user` llama a `revoke_all_sessions(user.id, redis)` siempre que cambie el rol,
 > tanto desde el tenant_admin (`PATCH /v1/users/{id}`) como desde el super_admin
 > (`PATCH /admin/tenants/{id}/users/{uid}`). Cambiar solo el nombre no cierra la sesión.
