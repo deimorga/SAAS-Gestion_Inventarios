@@ -4,7 +4,14 @@
 `feature/sprint-9-gestion-usuarios`. Diff contra `main` (`065ca62`): 92 ficheros.
 **Revisó:** Deiby Moreno (revisión asistida por Claude, esfuerzo alto)
 **Responsable de las correcciones:** Cristian Anacona
-**Estado:** desplegado en **staging** para pruebas. **Producción bloqueada** hasta cerrar los R marcados 🔴.
+**Estado:** ✅ **Cerrada.** R-01 a R-10 y A-1 a A-3 corregidos (PRs #1–#7), revisados por Deiby y
+desplegados: staging y **producción en `c441522`** el 2026-11-24 (prod a las 21:34 UTC, sin migraciones, corte de ~16 s).
+Suite en staging: 530 ok, 2 skip; mypy limpio.
+
+**Seguimiento abierto (menor, para Cristian):** al **reactivar** a un usuario que se desactivó estando pendiente
+(R-03), queda `active` con la contraseña aleatoria del alta, que nadie conoce; solo podría entrar con «olvidé mi
+contraseña», y si su email estaba mal escrito, quien lo reciba también. Debería volver a `pending` (p. ej. si
+`last_login_at` es nulo) y pedir reenviar la activación.
 
 ---
 

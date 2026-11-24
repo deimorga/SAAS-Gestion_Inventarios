@@ -4,7 +4,7 @@
 **Fecha Fin Estimada:** por definir
 **Responsable:** Cristian Anacona
 **Revisión y despliegue:** Deiby Moreno
-**Estado:** 🟡 Desarrollo terminado y probado en local — pendiente de revisión y despliegue (T-916)
+**Estado:** 🟡 En producción desde el 2026-11-24 (`992508e`; correcciones de la revisión en `c441522`). Solo falta la prueba real de Resend en prod (T-916)
 
 **Definición funcional:** [RF_gestion_usuarios.md](../../Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md) (RF-046 a RF-052)
 **Definición técnica:** [DT_gestion_usuarios.md](../../Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md)
@@ -69,7 +69,7 @@ Todos asignados a **Cristian Anacona**. Tamaño: S ≈ medio día · M ≈ 1–2
 | T-913 | Portal | Página `/super-admins` y enlace desde `/tenants` | RF-049 | M | T-909 | ✅ Hecho |
 | T-914 | Tests | Tests de §11 de la DT (gestión, admin, super_admins, reseteo, revocación) | Todos | L | Cada tarea | ✅ Hecho |
 | T-915 | Docs | Actualizar RF-039/RF-040 (módulo 08), `CLAUDE.md` y la guía de integración con los endpoints nuevos | — | S | Al cerrar | ✅ Hecho |
-| T-916 | Despliegue | **(Deiby)** Staging → verificación con Mailpit → prod. Reenviar activación a los admins pendientes de AWP y AutolavadoDemo. Prueba real de Resend | — | M | Todo | ⬜ Pendiente |
+| T-916 | Despliegue | **(Deiby)** Staging → verificación con Mailpit → prod. Reenviar activación al admin pendiente de AutolavadoDemo (AWP ya no es cliente). Prueba real de Resend | — | M | Todo | 🟡 Desplegado en staging y prod (2026-11-24). Bloqueado: la `RESEND_API_KEY` de prod no es una key de Resend, y prod nunca ha enviado un email |
 | T-917 | Tests | `test_admin_auth.py`: que el fixture solo borre los super_admins `sa-test-*` que creó, nunca la cuenta raíz, y que los tests que exigen tabla vacía hagan `skip` | RF-052, L-4 | S | — | ✅ Hecho |
 
 ### Orden sugerido

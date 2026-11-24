@@ -356,7 +356,7 @@ Critical settings in `.env`:
 
 ### Test Modules
 
-All tests in `core_backend/tests/` (32 módulos, 462 tests):
+All tests in `core_backend/tests/` (40 módulos, 532 tests a 2026-11-24):
 - `test_auth.py`, `test_admin_auth.py`, `test_activation.py` — Auth & admin
 - `test_inventory.py`, `test_reservations.py`, `test_cycle_counts.py` — Inventory
 - `test_products.py`, `test_categories.py`, `test_suppliers.py` — Catalog
@@ -368,6 +368,7 @@ All tests in `core_backend/tests/` (32 módulos, 462 tests):
 - `test_password_reset.py`, `test_session_revocation.py` — «Olvidé mi contraseña», límites y cierre inmediato de sesiones
 - `test_lot_location_traceability.py` — Bins, proveedor del lote, FEFO/FIFO y reparto en reservas, filtros, consecutivo de entradas, compatibilidad y aislamiento
 - `test_webhooks.py`, `test_tasks.py` — Async & webhooks
+- `test_review_*.py`, `test_api_key_scopes.py`, `test_concurrencia_bucles.py` — Un test por hallazgo de la revisión 2026-11-19 (R-01…R-10, A-1…A-3)
 
 ### Running Tests
 
@@ -456,6 +457,8 @@ Tests are async-aware (`pytest-asyncio`). Database uses transaction rollback for
 
 **Un script por SSH se corta a media ejecución**
 - `docker exec -i` hereda el stdin del heredoc y se come el resto del script. Añadir `</dev/null`.
+  **`docker compose run` hace lo mismo**: el 2026-11-24 las migraciones de prod corrieron y los contenedores no se
+  recrearon (código viejo sobre esquema nuevo ~30 s). `</dev/null` en **cada** comando `docker` del script.
 - El tenant interno es STARTER (1.000 rpm; antes 60, y entonces encadenar llamadas admin sin pausa daba 429): si aun así se pasa, da 429 y luego una
   cascada de variables vacías que parece un fallo de autenticación. Meter `sleep 2` entre pasos.
 
@@ -681,10 +684,12 @@ de crear uno sin llamar al API a mano.
 
 ## Módulo 09 — Gestión de Usuarios (Sprint 9): implementado (2026-11-06)
 
-> ⚠️ **Revisión de código pendiente de corregir** (2026-11-19): `doc/Planeacion/Revisiones/revision_2026-11-19_sprints_9_10.md`.
-> Hallazgos R-01 a R-10, asignados a Cristian. Los 🔴 bloquean el paso a producción. Sprints 9 y 10 están en staging.
+> ✅ **En producción** (2026-11-24, `c441522`), junto con las correcciones de la revisión
+> `doc/Planeacion/Revisiones/revision_2026-11-19_sprints_9_10.md` (R-01 a R-10, A-1 a A-3). Queda un seguimiento
+> menor anotado allí (reactivar a un usuario que nunca activó). **Producción todavía no envía emails**: su
+> `RESEND_API_KEY` no es una key de Resend; hasta corregirla, activaciones y reseteos no llegan (T-916).
 
-Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno** (T-916 pendiente). Antes de tocar
+Asignado a **Cristian Anacona**; revisa y despliega **Deiby Moreno** (T-916: falta la prueba real de Resend). Antes de tocar
 usuarios, autenticación o contraseñas, leer `doc/Planeacion/Sprints/sprint_09.md`,
 `doc/Funcional/mejorado/09_gestion_usuarios/RF_gestion_usuarios.md` (RF-046 a RF-052) y
 `doc/Definicion-Tecnica/09_gestion_usuarios/DT_gestion_usuarios.md` (§13: guía para desarrollar con Claude).
@@ -726,7 +731,8 @@ Guía para quien integra: `doc/integracion/gestion_usuarios.md`.
 
 - La migración 016 **no aborta en una base sin super_admins** (una base nueva): el bootstrap crea el primero ya protegido.
 - `ActivationResponse` devuelve `email` (solo al activar) para llevar al login con el email prellenado (RF-046).
-- Desactivar a un usuario **pendiente** no hace nada; reactivar a uno pendiente es 409.
+- Desactivar a un usuario **pendiente** lo pasa a `disabled` e invalida su enlace de activación (R-03; sustituye
+  a la decisión inicial de «no hace nada»); reactivar a uno pendiente es 409. Cambiar el rol cierra sus sesiones (R-04).
 - Un `tenant_admin` no puede cambiarse su propio rol (el tenant quedaría sin administrador).
 - Los refresh tokens emitidos antes de desplegar no están en el índice de sesiones: un reseteo no los cierra (hasta 7 días). Desactivar sí cierra todo.
 
