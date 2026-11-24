@@ -42,7 +42,7 @@
 
 ### R-01 — La expiración de reservas se bloquea entera
 
-> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: `8dd526a`
 > **Cambio:** el bucle pasa a `expire_due_reservations()` (`services/reservation.py`). Cada reserva se
 > expira en su propia sesión y transacción; si una falla, se hace rollback solo de ella, se registra con
 > `logger.exception` (id de reserva y tenant) y se sigue con las demás. `main.py` ya no usa
@@ -66,7 +66,7 @@
 
 ### R-02 — Reservas anteriores a la 015
 
-> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: _pendiente_
+> **Estado: ✅ Corregido** · rama `fix/R-01-02-reservas` · commit: `8dd526a`
 > **Cambio:** `_item_allocations` (rama sin asignaciones) solo considera filas con `reserved_qty > 0`,
 > la que más tiene primero, y si una no alcanza reparte la cantidad entre varias. Si entre todas no
 > suman lo reservado, `409` con el motivo («Saldo reservado insuficiente…») en vez de dejar
